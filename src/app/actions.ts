@@ -7,6 +7,7 @@ export interface ScoreRecord {
   student_name: string;
   score: number;
   total_questions: number;
+  unit_id: string;
   created_at?: string;
 }
 
@@ -17,7 +18,31 @@ export interface StudentUser {
   created_at?: string;
 }
 
-// 점수 목록 가져오기 (Server Action)
+// 단원별 점수 목록 가져오기 (Server Action)
+export async function getScoresByUnitAction(unitId: string): Promise<{ success: boolean; data?: ScoreRecord[]; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('quiz_scores')
+      .select('*')
+      .eq('unit_id', unitId)
+      .order('score', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error('Supabase fetch error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data: (data as ScoreRecord[]) || [] };
+  } catch (e) {
+    console.error('Server Action getScoresByUnit Error:', e);
+    return { success: false, error: '서버 연동 오류가 발생했습니다.' };
+  }
+}
+
+// 전체 점수 목록 (레거시 - 호환성 유지)
 export async function getScoresAction(): Promise<{ success: boolean; data?: ScoreRecord[]; error?: string }> {
   try {
     const supabase = await createClient();
@@ -40,8 +65,13 @@ export async function getScoresAction(): Promise<{ success: boolean; data?: Scor
   }
 }
 
-// 점수 저장하기 (Server Action)
-export async function submitScoreAction(studentName: string, score: number, totalQuestions: number = 5): Promise<{ success: boolean; error?: string }> {
+// 점수 저장하기 - unit_id 포함 (Server Action)
+export async function submitScoreAction(
+  studentName: string,
+  score: number,
+  totalQuestions: number = 5,
+  unitId: string = 'mid1_unit1'
+): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = await createClient();
     const { error } = await supabase.from('quiz_scores').insert([
@@ -49,6 +79,7 @@ export async function submitScoreAction(studentName: string, score: number, tota
         student_name: studentName.trim(),
         score: score,
         total_questions: totalQuestions,
+        unit_id: unitId,
       },
     ]);
 

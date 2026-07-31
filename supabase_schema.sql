@@ -9,8 +9,12 @@ create table if not exists public.quiz_scores (
     student_name text not null,
     score integer not null,
     total_questions integer not null default 5,
+    unit_id text not null default 'mid1_unit1',  -- 단원 ID (예: mid1_unit1, mid2_unit3 등)
     created_at timestamp with time zone default now()
 );
+
+-- unit_id 컬럼 추가 (기존 테이블에 적용)
+alter table public.quiz_scores add column if not exists unit_id text not null default 'mid1_unit1';
 
 -- 2. students 테이블 생성 (학생 로그인/회원가입용)
 create table if not exists public.students (
@@ -43,3 +47,16 @@ create policy "Allow public update students" on public.students for update using
 
 drop policy if exists "Allow public delete students" on public.students;
 create policy "Allow public delete students" on public.students for delete using (true);
+
+-- ==========================================
+-- 단원 ID 목록 (참고용)
+-- mid1_unit1 = 중1 1단원: 소인수분해
+-- mid1_unit2 = 중1 2단원: 정수와 유리수
+-- mid1_unit3 = 중1 3단원: 일차방정식
+-- mid2_unit1 = 중2 1단원: 유리수와 순환소수
+-- mid2_unit2 = 중2 2단원: 일차부등식
+-- mid2_unit3 = 중2 3단원: 일차함수
+-- mid3_unit1 = 중3 1단원: 제곱근과 실수
+-- mid3_unit2 = 중3 2단원: 이차방정식
+-- mid3_unit3 = 중3 3단원: 이차함수
+-- ==========================================

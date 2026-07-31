@@ -6,6 +6,9 @@ import {
   submitScoreAction,
   loginStudentAction,
   registerStudentAction,
+  getAllStudentsAdminAction,
+  deleteStudentAdminAction,
+  updateStudentAdminAction,
   ScoreRecord,
   StudentUser,
 } from '@/app/actions';
@@ -22,10 +25,16 @@ import {
   Lock,
   LogOut,
   LogIn,
-  BookOpen,
   Calculator,
   Smile,
   GraduationCap,
+  ShieldCheck,
+  Trash2,
+  Edit3,
+  Save,
+  X,
+  Search,
+  Users,
 } from 'lucide-react';
 
 interface Question {
@@ -35,7 +44,6 @@ interface Question {
   answer: number;
 }
 
-// 중1 수학 퀴즈 문제
 const MID1_QUIZ_QUESTIONS: Question[] = [
   {
     id: 1,
@@ -69,7 +77,6 @@ const MID1_QUIZ_QUESTIONS: Question[] = [
   },
 ];
 
-// 중2 수학 퀴즈 문제
 const MID2_QUIZ_QUESTIONS: Question[] = [
   {
     id: 1,
@@ -91,7 +98,6 @@ const MID2_QUIZ_QUESTIONS: Question[] = [
   },
 ];
 
-// 중3 수학 퀴즈 문제
 const MID3_QUIZ_QUESTIONS: Question[] = [
   {
     id: 1,
@@ -122,6 +128,15 @@ export default function Home() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
+  // Admin Modal State
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [studentList, setStudentList] = useState<StudentUser[]>([]);
+  const [loadingAdminList, setLoadingAdminList] = useState(false);
+  const [adminSearch, setAdminSearch] = useState('');
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [editNameInput, setEditNameInput] = useState('');
+  const [editPasswordInput, setEditPasswordInput] = useState('');
+
   // Quiz State
   const [quizStage, setQuizStage] = useState<'start' | 'quiz' | 'result'>('start');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -134,7 +149,6 @@ export default function Home() {
   const [leaderboard, setLeaderboard] = useState<ScoreRecord[]>([]);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
 
-  // 저장된 학생 정보 로드
   useEffect(() => {
     const saved = localStorage.getItem('math_student_user');
     if (saved) {
@@ -146,7 +160,6 @@ export default function Home() {
     }
   }, []);
 
-  // 리더보드 데이터 로드
   const fetchLeaderboard = useCallback(async () => {
     setIsLoadingLeaderboard(true);
     const res = await getScoresAction();
@@ -162,7 +175,60 @@ export default function Home() {
     }
   }, [activeTab, fetchLeaderboard]);
 
-  // 학번 로그인 처리
+  // 관리자 학생 목록 불러오기
+  const fetchAdminStudentList = useCallback(async () => {
+    if (!currentUser || currentUser.student_id !== '10000') return;
+    setLoadingAdminList(true);
+    const res = await getAllStudentsAdminAction(currentUser.student_id);
+    if (res.success && res.students) {
+      setStudentList(res.students);
+    }
+    setLoadingAdminList(false);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (showAdminModal) {
+      fetchAdminStudentList();
+    }
+  }, [showAdminModal, fetchAdminStudentList]);
+
+  // 학생 삭제 (관리자)
+  const handleDeleteStudent = async (targetId: string, name: string) => {
+    if (!currentUser || currentUser.student_id !== '10000') return;
+    if (!confirm(`${name} (${targetId}) 학생 계정을 정말 삭제하시겠습니까?`)) return;
+
+    const res = await deleteStudentAdminAction(currentUser.student_id, targetId);
+    if (res.success) {
+      fetchAdminStudentList();
+    } else {
+      alert(res.error || '삭제 실패');
+    }
+  };
+
+  // 학생 정보 수정 (관리자)
+  const handleStartEdit = (st: StudentUser) => {
+    setEditingStudentId(st.student_id);
+    setEditNameInput(st.name);
+    setEditPasswordInput(st.password || '');
+  };
+
+  const handleSaveEdit = async (targetId: string) => {
+    if (!currentUser || currentUser.student_id !== '10000') return;
+
+    const res = await updateStudentAdminAction(
+      currentUser.student_id,
+      targetId,
+      editNameInput,
+      editPasswordInput
+    );
+    if (res.success) {
+      setEditingStudentId(null);
+      fetchAdminStudentList();
+    } else {
+      alert(res.error || '수정 실패');
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -180,7 +246,6 @@ export default function Home() {
     setAuthLoading(false);
   };
 
-  // 학생 회원가입 처리
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -210,7 +275,6 @@ export default function Home() {
     setAuthError('');
   };
 
-  // 퀴즈 진행 제어
   const getCurrentQuestions = () => {
     if (activeTab === 'mid2') return MID2_QUIZ_QUESTIONS;
     if (activeTab === 'mid3') return MID3_QUIZ_QUESTIONS;
@@ -269,11 +333,16 @@ export default function Home() {
     setIsSubmittingScore(false);
   };
 
+  const filteredAdminStudents = studentList.filter(
+    (st) =>
+      st.student_id.includes(adminSearch.trim()) ||
+      st.name.toLowerCase().includes(adminSearch.trim().toLowerCase())
+  );
+
   return (
     <div className="flex flex-col min-h-screen font-jua bg-[#F8FBFE] text-[#4B5563]">
       {/* 상단 헤더 & 서비스 로고 */}
       <header className="flex flex-col sm:flex-row items-center justify-between p-6 bg-white/70 backdrop-blur-md shadow-[0_8px_30px_rgba(181,234,215,0.3)] rounded-b-[2.5rem] gap-4">
-        {/* 서비스 이름: 수학교실 */}
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('mid1')}>
           <div className="w-12 h-12 bg-[#FFD1DC]/50 rounded-2xl flex items-center justify-center shadow-[0_4px_15px_rgba(255,209,220,0.6)]">
             <Calculator className="w-7 h-7 text-[#FF85A1]" />
@@ -286,7 +355,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 네비게이션 바: 중1, 중2, 중3, 명예의 전당 */}
+        {/* 네비게이션 바 */}
         <nav className="flex items-center gap-2 bg-[#F0F8FF] p-2 rounded-full shadow-inner">
           <button
             onClick={() => { setActiveTab('mid1'); setQuizStage('start'); }}
@@ -331,22 +400,37 @@ export default function Home() {
           </button>
         </nav>
 
-        {/* 학생 로그인 / 회원 정보 영역 */}
+        {/* 학생 / 관리자 로그인 영역 */}
         <div>
           {currentUser ? (
-            <div className="flex items-center gap-3 bg-[#FFF5BA]/60 px-5 py-2.5 rounded-full shadow-sm">
-              <GraduationCap className="w-6 h-6 text-[#A2B5E2]" />
-              <div className="text-sm">
-                <span className="font-bold text-[#4B5563]">{currentUser.name}</span>
-                <span className="text-xs text-[#8E9BAE] ml-1">({currentUser.student_id})</span>
+            <div className="flex items-center gap-3">
+              {/* 계정 정보 뱃지 */}
+              <div className="flex items-center gap-2 bg-[#FFF5BA]/60 px-5 py-2.5 rounded-full shadow-sm">
+                <GraduationCap className="w-6 h-6 text-[#A2B5E2]" />
+                <div className="text-sm">
+                  <span className="font-bold text-[#4B5563]">{currentUser.name}</span>
+                  <span className="text-xs text-[#8E9BAE] ml-1">({currentUser.student_id})</span>
+                </div>
+
+                {/* 관리자(10000)일 경우 [학생 계정 관리] 버튼 표시 */}
+                {currentUser.student_id === '10000' && (
+                  <button
+                    onClick={() => setShowAdminModal(true)}
+                    className="flex items-center gap-1 ml-2 px-3 py-1 bg-[#FFD1DC] text-white text-xs rounded-full hover:scale-105 transition-transform font-bold shadow-sm"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>학생 계정 관리</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={handleLogout}
+                  title="로그아웃"
+                  className="p-1.5 hover:bg-white/50 rounded-full transition-colors text-gray-400 hover:text-red-400 ml-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                onClick={handleLogout}
-                title="로그아웃"
-                className="p-1.5 hover:bg-white/50 rounded-full transition-colors text-gray-400 hover:text-red-400 ml-1"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
             </div>
           ) : (
             <button
@@ -560,9 +644,6 @@ export default function Home() {
 
               {quizStage === 'result' && (
                 <div className="flex flex-col items-center gap-6 text-center">
-                  <div className="w-24 h-24 bg-[#FFF5BA] rounded-full flex items-center justify-center text-5xl shadow-bounce">
-                    🏆
-                  </div>
                   <h2 className="text-3xl text-[#A2B5E2] font-bold">{currentUser?.name} 학생 축하합니다!</h2>
                   <div className="bg-[#F8FBFE] w-full p-6 rounded-3xl flex flex-col items-center">
                     <span className="text-5xl font-bold text-[#B5EAD7]">{calculateScore()}점 / {questions.length}점</span>
@@ -736,6 +817,163 @@ export default function Home() {
         </div>
       </main>
 
+      {/* 관리자 전용: 학생 계정 & 비밀번호 관리 모달 */}
+      {showAdminModal && currentUser?.student_id === '10000' && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-2xl p-8 rounded-[3rem] shadow-2xl flex flex-col gap-6 relative max-h-[90vh] overflow-hidden">
+            <button
+              onClick={() => setShowAdminModal(false)}
+              className="absolute top-6 right-6 text-gray-400 hover:text-gray-600 text-2xl"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            <div className="flex items-center gap-3 border-b pb-4 border-gray-100">
+              <ShieldCheck className="w-8 h-8 text-[#FF85A1]" />
+              <div>
+                <h3 className="text-2xl font-bold text-[#4B5563]">
+                  학생 계정 및 비밀번호 관리자 전용 🔐
+                </h3>
+                <p className="text-xs text-[#8E9BAE]">
+                  관리자 계정 ({currentUser.name})으로 로그인되었습니다.
+                </p>
+              </div>
+            </div>
+
+            {/* 학생 검색 및 새로고침 */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="relative flex-grow">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#A2B5E2]" />
+                <input
+                  type="text"
+                  placeholder="학번 또는 학생 이름으로 검색"
+                  value={adminSearch}
+                  onChange={(e) => setAdminSearch(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 bg-[#F8FBFE] text-base rounded-full outline-none focus:ring-2 focus:ring-[#FFD1DC]"
+                />
+              </div>
+              <button
+                onClick={fetchAdminStudentList}
+                className="p-3 bg-[#F0F8FF] rounded-full text-[#A2B5E2] hover:rotate-180 transition-transform duration-500"
+                title="목록 새로고침"
+              >
+                <RefreshCw className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 학생 계정 목록 */}
+            <div className="flex-grow overflow-y-auto pr-1 flex flex-col gap-3 max-h-[400px]">
+              {loadingAdminList ? (
+                <div className="py-8 text-center text-[#8E9BAE]">
+                  학생 계정 목록을 불러오는 중...
+                </div>
+              ) : filteredAdminStudents.length === 0 ? (
+                <div className="py-8 text-center text-[#8E9BAE]">
+                  등록된 학생 계정이 없거나 검색 결과가 없습니다.
+                </div>
+              ) : (
+                filteredAdminStudents.map((st) => {
+                  const isEditing = editingStudentId === st.student_id;
+                  const isAdmin = st.student_id === '10000';
+
+                  return (
+                    <div
+                      key={st.student_id}
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl gap-3 transition-all ${
+                        isAdmin ? 'bg-[#FFF5BA]/40 border border-yellow-200' : 'bg-[#F8FBFE]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1 bg-[#C7CEEA]/40 text-[#4B5563] font-bold rounded-xl text-sm">
+                          {st.student_id}
+                        </span>
+
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editNameInput}
+                            onChange={(e) => setEditNameInput(e.target.value)}
+                            className="px-3 py-1 border rounded-xl text-base w-32 outline-none"
+                          />
+                        ) : (
+                          <span className="font-bold text-lg text-[#4B5563]">
+                            {st.name} {isAdmin && '👑(관리자)'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-4">
+                        {/* 비밀번호 표시 / 수정 */}
+                        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-gray-100 text-sm">
+                          <span className="text-xs text-[#8E9BAE]">PW:</span>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editPasswordInput}
+                              onChange={(e) => setEditPasswordInput(e.target.value)}
+                              className="px-2 py-0.5 border rounded-lg text-sm w-28 outline-none font-mono"
+                            />
+                          ) : (
+                            <span className="font-mono text-[#FF85A1] font-bold">
+                              {st.password}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 작업 버튼 */}
+                        <div className="flex items-center gap-2">
+                          {isEditing ? (
+                            <>
+                              <button
+                                onClick={() => handleSaveEdit(st.student_id)}
+                                className="p-2 bg-[#B5EAD7] text-white rounded-xl hover:scale-105 transition-transform"
+                                title="저장"
+                              >
+                                <Save className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setEditingStudentId(null)}
+                                className="p-2 bg-gray-200 text-gray-600 rounded-xl hover:scale-105 transition-transform"
+                                title="취소"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleStartEdit(st)}
+                                className="p-2 bg-[#F0F8FF] text-[#A2B5E2] hover:bg-[#C7CEEA]/30 rounded-xl transition-colors"
+                                title="수정"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              {!isAdmin && (
+                                <button
+                                  onClick={() => handleDeleteStudent(st.student_id, st.name)}
+                                  className="p-2 bg-red-50 text-red-400 hover:bg-red-100 rounded-xl transition-colors"
+                                  title="계정 삭제"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="text-right text-xs text-[#8E9BAE] border-t pt-3">
+              총 {filteredAdminStudents.length}개 계정 등록됨
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 학번 로그인 / 회원가입 모달 */}
       {showAuthModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -765,7 +1003,6 @@ export default function Home() {
               onSubmit={authMode === 'login' ? handleLogin : handleRegister}
               className="flex flex-col gap-4"
             >
-              {/* 학번 입력 */}
               <div className="relative">
                 <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#A2B5E2]" />
                 <input
@@ -778,7 +1015,6 @@ export default function Home() {
                 />
               </div>
 
-              {/* 이름 입력 (회원가입 시) */}
               {authMode === 'register' && (
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#A2B5E2]" />
@@ -793,7 +1029,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 비밀번호 입력 */}
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#A2B5E2]" />
                 <input

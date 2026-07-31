@@ -13,6 +13,8 @@ export interface ScoreRecord {
 export interface StudentUser {
   student_id: string;
   name: string;
+  password?: string;
+  created_at?: string;
 }
 
 // 점수 목록 가져오기 (Server Action)
@@ -102,7 +104,6 @@ export async function registerStudentAction(studentId: string, name: string, pas
   try {
     const supabase = await createClient();
 
-    // 학번 중복 검사
     const { data: existing } = await supabase
       .from('students')
       .select('student_id')
@@ -135,5 +136,87 @@ export async function registerStudentAction(studentId: string, name: string, pas
   } catch (e) {
     console.error('Server Action registerStudent Error:', e);
     return { success: false, error: '회원가입 서버 오류가 발생했습니다.' };
+  }
+}
+
+// 관리자 검증 함수
+function isAdminUser(studentId: string) {
+  return studentId.trim() === '10000';
+}
+
+// [관리자 전용] 전체 학생 목록 및 비밀번호 조회
+export async function getAllStudentsAdminAction(adminStudentId: string): Promise<{ success: boolean; students?: StudentUser[]; error?: string }> {
+  if (!isAdminUser(adminStudentId)) {
+    return { success: false, error: '관리자 권한이 없습니다.' };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('students')
+      .select('student_id, name, password, created_at')
+      .order('student_id', { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, students: (data as StudentUser[]) || [] };
+  } catch (e) {
+    console.error('Server Action getAllStudentsAdmin Error:', e);
+    return { success: false, error: '학생 목록을 불러오지 못했습니다.' };
+  }
+}
+
+// [관리자 전용] 학생 삭제
+export async function deleteStudentAdminAction(adminStudentId: string, targetStudentId: string): Promise<{ success: boolean; error?: string }> {
+  if (!isAdminUser(adminStudentId)) {
+    return { success: false, error: '관리자 권한이 없습니다.' };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from('students')
+      .delete()
+      .eq('student_id', targetStudentId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (e) {
+    console.error('Server Action deleteStudentAdmin Error:', e);
+    return { success: false, error: '학생 삭제에 실패했습니다.' };
+  }
+}
+
+// [관리자 전용] 학생 정보(이름, 비밀번호) 수정
+export async function updateStudentAdminAction(
+  adminStudentId: string,
+  targetStudentId: string,
+  newName: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!isAdminUser(adminStudentId)) {
+    return { success: false, error: '관리자 권한이 없습니다.' };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from('students')
+      .update({ name: newName.trim(), password: newPassword })
+      .eq('student_id', targetStudentId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (e) {
+    console.error('Server Action updateStudentAdmin Error:', e);
+    return { success: false, error: '학생 정보 수정 실패' };
   }
 }

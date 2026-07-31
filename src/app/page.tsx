@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   getScoresByUnitAction,
   submitScoreAction,
+  deleteScoreAdminAction,
   loginStudentAction,
   registerStudentAction,
   getAllStudentsAdminAction,
@@ -464,16 +465,31 @@ export default function Home() {
     if (!currentUser || isScoreSubmitted) return;
     setIsSubmittingScore(true);
     setSubmitError('');
-    const score = calculateScore();
-    const displayName = `${currentUser.name} (${currentUser.student_id})`;
-    const res = await submitScoreAction(displayName, score, quizQuestions.length, activeUnitId);
-    if (res.success) {
-      setIsScoreSubmitted(true);
-      setViewMode('leaderboard');
-    } else {
-      setSubmitError(res.error || '점수 저장에 실패했습니다.');
+    try {
+      const score = calculateScore();
+      const displayName = `${currentUser.name} (${currentUser.student_id})`;
+      const res = await submitScoreAction(displayName, score, quizQuestions.length, activeUnitId);
+      if (res.success) {
+        setIsScoreSubmitted(true);
+        setViewMode('leaderboard');
+      } else {
+        setSubmitError(res.error || '점수 저장에 실패했습니다.');
+      }
+    } catch (e) {
+      console.error('Score submit error:', e);
+      setSubmitError('네트워크 오류가 발생했습니다. 다시 시도해 주세요.');
+    } finally {
+      setIsSubmittingScore(false);
     }
-    setIsSubmittingScore(false);
+  };
+
+  // ── 명예의 전당 기록 삭제 (관리자 전용) ──
+  const handleDeleteScore = async (scoreId: string) => {
+    if (!currentUser || currentUser.student_id !== '10000') return;
+    if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+    const res = await deleteScoreAdminAction(currentUser.student_id, scoreId);
+    if (res.success) fetchLeaderboard();
+    else alert(res.error || '삭제 실패');
   };
 
   const filteredAdminStudents = studentList.filter(
@@ -847,9 +863,18 @@ export default function Home() {
                             <p className="text-xs text-[#A2B5E2]">{item.created_at ? new Date(item.created_at).toLocaleDateString('ko-KR') : ''}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-2">
                           <span className="text-xl font-black" style={{ color: activeGrade.color }}>{item.score}</span>
                           <span className="text-sm text-[#A2B5E2]">/ {item.total_questions}점</span>
+                          {currentUser?.student_id === '10000' && item.id && (
+                            <button
+                              onClick={() => handleDeleteScore(item.id!)}
+                              title="기록 삭제 (관리자)"
+                              className="ml-1 p-1.5 bg-red-50 text-red-400 hover:bg-red-100 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -932,7 +957,7 @@ export default function Home() {
                           {isEditing ? (
                             <input type="text" value={editPasswordInput} onChange={(e) => setEditPasswordInput(e.target.value)} className="px-1 border rounded text-xs w-24 outline-none font-mono" />
                           ) : (
-                            <span className="font-mono text-[#FF85A1] font-bold">{st.password}</span>
+                            <span className="font-mono text-[#A2B5E2]">{'●'.repeat(Math.min((st.password?.length ?? 4), 6))}</span>
                           )}
                         </div>
                         <div className="flex gap-1">

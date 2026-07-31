@@ -42,6 +42,28 @@ export async function getScoresByUnitAction(unitId: string): Promise<{ success: 
   }
 }
 
+// [관리자 전용] 명예의 전당 기록 삭제
+export async function deleteScoreAdminAction(adminStudentId: string, scoreId: string): Promise<{ success: boolean; error?: string }> {
+  if (adminStudentId.trim() !== '10000') {
+    return { success: false, error: '관리자 권한이 없습니다.' };
+  }
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from('quiz_scores')
+      .delete()
+      .eq('id', scoreId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (e) {
+    console.error('Server Action deleteScoreAdmin Error:', e);
+    return { success: false, error: '기록 삭제에 실패했습니다.' };
+  }
+}
+
 // 전체 점수 목록 (레거시 - 호환성 유지)
 export async function getScoresAction(): Promise<{ success: boolean; data?: ScoreRecord[]; error?: string }> {
   try {

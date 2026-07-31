@@ -24,15 +24,22 @@ create table if not exists public.students (
 alter table public.quiz_scores enable row level security;
 alter table public.students enable row level security;
 
--- 4. RLS 정책 설정
+-- 4. RLS 정책 설정 (quiz_scores)
 drop policy if exists "Allow public read access" on public.quiz_scores;
 create policy "Allow public read access" on public.quiz_scores for select using (true);
 
 drop policy if exists "Allow public insert access" on public.quiz_scores;
 create policy "Allow public insert access" on public.quiz_scores for insert with check (true);
 
+-- 5. RLS 정책 설정 (students - SELECT, INSERT, UPDATE, DELETE)
 drop policy if exists "Allow public select students" on public.students;
 create policy "Allow public select students" on public.students for select using (true);
 
 drop policy if exists "Allow public insert students" on public.students;
 create policy "Allow public insert students" on public.students for insert with check (true);
+
+drop policy if exists "Allow public update students" on public.students;
+create policy "Allow public update students" on public.students for update using (true) with check (true);
+
+drop policy if exists "Allow public delete students" on public.students;
+create policy "Allow public delete students" on public.students for delete using (true);

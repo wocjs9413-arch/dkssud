@@ -1,0 +1,22 @@
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@theme {
+  --color-pastel-pink: #FFD1DC;
+  --color-pastel-mint: #B5EAD7;
+  --color-pastel-blue: #C7CEEA;
+  --color-pastel-lemon: #FFF5BA;
+  --font-jua: var(--font-jua), sans-serif;
+}
+
+:root {
+  --background: #F8FBFE;
+  --foreground: #4B5563;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}

@@ -1,15 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@/utils/supabase/client';
+import { getScoresAction, submitScoreAction, ScoreRecord } from '@/app/actions';
 import { Trophy, Sparkles, CheckCircle2, RefreshCw, User, Play, Send, Medal, Star } from 'lucide-react';
 
-// 퀴즈 문제 정의 (각 1점)
 interface Question {
   id: number;
   question: string;
   options: string[];
-  answer: number; // 정답 인덱스 (0-based)
+  answer: number;
 }
 
 const QUIZ_QUESTIONS: Question[] = [
@@ -45,16 +44,7 @@ const QUIZ_QUESTIONS: Question[] = [
   },
 ];
 
-interface ScoreRecord {
-  id?: string;
-  student_name: string;
-  score: number;
-  total_questions: number;
-  created_at?: string;
-}
-
 export default function Home() {
-  // 상태 관리
   const [stage, setStage] = useState<'start' | 'quiz' | 'result' | 'leaderboard'>('start');
   const [studentName, setStudentName] = useState('');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -65,33 +55,18 @@ export default function Home() {
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const supabase = createClient();
-
-  // 리더보드 데이터 불러오기
+  // Server Action을 통한 리더보드 불러오기 (브라우저 차단 완벽 회피)
   const fetchLeaderboard = useCallback(async () => {
     setIsLoadingLeaderboard(true);
     setErrorMessage('');
-    try {
-      const { data, error } = await supabase
-        .from('quiz_scores')
-        .select('*')
-        .order('score', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (error) {
-        console.error('Supabase fetch error:', error);
-        setErrorMessage('Supabase 연결 상태를 확인해 주세요 (테이블 생성 여부).');
-      } else if (data) {
-        setLeaderboard(data as ScoreRecord[]);
-      }
-    } catch (e) {
-      console.error(e);
-      setErrorMessage('리더보드를 불러오는 중 오류가 발생했습니다.');
-    } finally {
-      setIsLoadingLeaderboard(false);
+    const res = await getScoresAction();
+    if (res.success && res.data) {
+      setLeaderboard(res.data);
+    } else {
+      setErrorMessage(res.error || '리더보드를 불러오는 중 오류가 발생했습니다.');
     }
-  }, [supabase]);
+    setIsLoadingLeaderboard(false);
+  }, []);
 
   useEffect(() => {
     if (stage === 'leaderboard') {
@@ -99,7 +74,6 @@ export default function Home() {
     }
   }, [stage, fetchLeaderboard]);
 
-  // 퀴즈 시작하기
   const handleStartQuiz = (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentName.trim()) return;
@@ -109,14 +83,12 @@ export default function Home() {
     setStage('quiz');
   };
 
-  // 답변 선택
   const handleSelectOption = (optionIndex: number) => {
     const newAnswers = [...selectedAnswers];
     newAnswers[currentQuestionIndex] = optionIndex;
     setSelectedAnswers(newAnswers);
   };
 
-  // 다음 문제 또는 제출 단계로 이동
   const handleNextQuestion = () => {
     if (currentQuestionIndex < QUIZ_QUESTIONS.length - 1) {
       setCurrentQuestionIndex((prev) => prev + 1);
@@ -125,46 +97,30 @@ export default function Home() {
     }
   };
 
-  // 최종 점수 계산 (각 1점)
   const calculateScore = () => {
     return selectedAnswers.reduce((score, answer, index) => {
       return answer === QUIZ_QUESTIONS[index].answer ? score + 1 : score;
     }, 0);
   };
 
-  // Supabase에 점수 제출
+  // Server Action을 통한 점수 제출 (네트워크/CORS 차단 방지)
   const handleSubmitScore = async () => {
     if (isSubmitted) return;
     setIsSubmitting(true);
     setErrorMessage('');
 
     const finalScore = calculateScore();
+    const res = await submitScoreAction(studentName, finalScore, QUIZ_QUESTIONS.length);
 
-    try {
-      const { error } = await supabase.from('quiz_scores').insert([
-        {
-          student_name: studentName.trim(),
-          score: finalScore,
-          total_questions: QUIZ_QUESTIONS.length,
-        },
-      ]);
-
-      if (error) {
-        console.error('Insert error:', error);
-        setErrorMessage('점수 저장에 실패했습니다. Supabase 테이블 설정을 확인해 주세요.');
-      } else {
-        setIsSubmitted(true);
-        setStage('leaderboard');
-      }
-    } catch (e) {
-      console.error(e);
-      setErrorMessage('오류가 발생하여 점수를 제출하지 못했습니다.');
-    } finally {
-      setIsSubmitting(false);
+    if (res.success) {
+      setIsSubmitted(true);
+      setStage('leaderboard');
+    } else {
+      setErrorMessage(res.error || '점수 저장에 실패했습니다.');
     }
+    setIsSubmitting(false);
   };
 
-  // 처음으로 돌아가기
   const handleRestart = () => {
     setStudentName('');
     setSelectedAnswers([]);
@@ -239,13 +195,11 @@ export default function Home() {
           {/* 2단계: 퀴즈 풀기 */}
           {stage === 'quiz' && (
             <div className="flex flex-col gap-6">
-              {/* 진행률 상단 표시 */}
               <div className="flex items-center justify-between text-lg text-[#8E9BAE]">
                 <span>학생: <strong className="text-[#A2B5E2]">{studentName}</strong></span>
                 <span>문제 {currentQuestionIndex + 1} / {QUIZ_QUESTIONS.length}</span>
               </div>
 
-              {/* 진행률 바 */}
               <div className="w-full h-3 bg-[#F0F8FF] rounded-full overflow-hidden">
                 <div
                   className="h-full bg-[#B5EAD7] transition-all duration-300 rounded-full"
@@ -255,14 +209,12 @@ export default function Home() {
                 />
               </div>
 
-              {/* 문제 카드 */}
               <div className="bg-[#FFF5BA]/30 p-6 rounded-3xl text-center my-2">
                 <h3 className="text-2xl sm:text-3xl text-[#4B5563] font-bold leading-relaxed">
                   {QUIZ_QUESTIONS[currentQuestionIndex].question}
                 </h3>
               </div>
 
-              {/* 보기 선택지 */}
               <div className="grid grid-cols-1 gap-3">
                 {QUIZ_QUESTIONS[currentQuestionIndex].options.map((option, idx) => {
                   const isSelected = selectedAnswers[currentQuestionIndex] === idx;
@@ -283,7 +235,6 @@ export default function Home() {
                 })}
               </div>
 
-              {/* 다음 버튼 */}
               <button
                 onClick={handleNextQuestion}
                 disabled={selectedAnswers[currentQuestionIndex] === undefined}
@@ -366,9 +317,8 @@ export default function Home() {
               </div>
 
               {errorMessage && (
-                <div className="text-sm bg-[#FFF5BA]/60 p-4 rounded-2xl text-[#8E9BAE]">
-                  💡 <strong>Supabase 안내:</strong> 아직 DB 테이블이 생성되지 않았을 수 있습니다.
-                  제공해 드린 <code>supabase_schema.sql</code>을 Supabase SQL Editor에 실행해 주세요!
+                <div className="text-sm bg-red-50 p-4 rounded-2xl text-red-500">
+                  {errorMessage}
                 </div>
               )}
 

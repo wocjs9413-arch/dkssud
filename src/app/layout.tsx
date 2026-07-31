@@ -9,8 +9,8 @@ const jua = Jua({
 });
 
 export const metadata: Metadata = {
-  title: "나만의 교육용 웹앱 만들기",
-  description: "파스텔 톤의 귀여운 유아용 앱 보일러플레이트",
+  title: "솜사탕 수학교실 📐",
+  description: "즐거운 중등 수학교실 및 활동 사이트",
 };
 
 export default function RootLayout({

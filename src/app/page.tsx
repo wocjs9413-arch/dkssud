@@ -711,8 +711,8 @@ export default function Home() {
   const [activeGradeId, setActiveGradeId] = useState<string>('mid1');
   const [activeUnitId, setActiveUnitId] = useState<string>('mid1_unit1');
 
-  // 뷰 모드: 'home' | 'quiz' | 'result' | 'leaderboard'
-  const [viewMode, setViewMode] = useState<'home' | 'quiz' | 'result' | 'leaderboard'>('home');
+  // 뷰 모드: 'main' | 'home' | 'quiz' | 'result' | 'leaderboard'
+  const [viewMode, setViewMode] = useState<'main' | 'home' | 'quiz' | 'result' | 'leaderboard'>('main');
 
   // 현재 사용자
   const [currentUser, setCurrentUser] = useState<StudentUser | null>(null);
@@ -861,7 +861,7 @@ export default function Home() {
   const handleLogout = () => {
     setCurrentUser(null);
     setIsGuest(false);
-    setViewMode('home');
+    setViewMode('main');
     localStorage.removeItem('math_student_user');
   };
 
@@ -870,10 +870,10 @@ export default function Home() {
   };
 
   // ── 퀴즈 ──
-  // 실제 퀴즈 시작 (단원별 25문제 출제)
+  // 실제 퀴즈 시작 (단원별 25문제 풀에서 10문제 무작위 출제)
   const doStartQuiz = (asGuest = false) => {
     setIsGuest(asGuest);
-    const countToPick = Math.min(activeUnit.questions.length, 25);
+    const countToPick = Math.min(activeUnit.questions.length, 10);
     const picked = pickRandom(activeUnit.questions, countToPick);
     setQuizQuestions(picked);
     setCurrentQuestionIndex(0);
@@ -959,30 +959,40 @@ export default function Home() {
       <header className="flex flex-col gap-4 p-5 bg-white/80 backdrop-blur-xl shadow-[0_4px_30px_rgba(181,200,255,0.2)] border-b border-white/60">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           {/* 로고 */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setActiveGradeId('mid1'); setActiveUnitId('mid1_unit1'); setViewMode('home'); }}>
-            <div className="w-11 h-11 bg-gradient-to-br from-[#FFD1DC] to-[#B5EAD7] rounded-2xl flex items-center justify-center shadow-lg">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setViewMode('main')}>
+            <div className="w-11 h-11 bg-gradient-to-br from-[#FF85A1] to-[#7B8DE0] rounded-2xl flex items-center justify-center shadow-lg">
               <Calculator className="w-6 h-6 text-white" />
             </div>
             <div>
               <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#FF85A1] to-[#7B8DE0] tracking-tight">
-                수학교실 📐
+                용수중 수학교실 📐
               </h1>
-              <p className="text-xs text-[#A2B5E2]">즐거운 중등 수학 탐구 공간 (1·2학기 25문항 풀세트)</p>
+              <p className="text-xs text-[#A2B5E2]">즐거운 용수중 수학 탐구 공간 (1·2학기 과정)</p>
             </div>
           </div>
 
-          {/* 학년 내비게이션 */}
-          <nav className="flex items-center gap-1 bg-[#F0F4FF] p-1.5 rounded-full shadow-inner">
+          {/* 학년 내비게이션 & 메인 홈 버튼 */}
+          <nav className="flex items-center gap-1 bg-[#F0F4FF] p-1.5 rounded-full shadow-inner flex-wrap justify-center">
+            <button
+              onClick={() => setViewMode('main')}
+              className={`px-4 py-2 rounded-full text-sm font-bold transition-all duration-200 ${
+                viewMode === 'main'
+                  ? 'bg-gradient-to-r from-[#FF85A1] to-[#7B8DE0] text-white scale-105 shadow-md'
+                  : 'text-[#8E9BAE] hover:text-[#4B5563]'
+              }`}
+            >
+              🏫 메인 홈
+            </button>
             {GRADES.map((grade) => (
               <button
                 key={grade.id}
                 onClick={() => handleGradeChange(grade.id)}
                 className={`px-5 py-2 rounded-full text-base font-bold transition-all duration-200 ${
-                  activeGradeId === grade.id
+                  viewMode !== 'main' && activeGradeId === grade.id
                     ? 'text-white scale-105 shadow-lg'
                     : 'text-[#8E9BAE] hover:text-[#4B5563]'
                 }`}
-                style={activeGradeId === grade.id ? { backgroundColor: grade.bgColor, boxShadow: `0 4px 15px ${grade.shadowColor}` } : {}}
+                style={viewMode !== 'main' && activeGradeId === grade.id ? { backgroundColor: grade.bgColor, boxShadow: `0 4px 15px ${grade.shadowColor}` } : {}}
               >
                 {grade.name}
               </button>
@@ -1023,44 +1033,138 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── 단원 탭 (2차 내비게이션) ── */}
-        <div className="flex items-center gap-2 flex-wrap justify-center">
-          {activeGrade.units.map((unit) => (
+        {/* ── 단원 탭 (viewMode가 main이 아닐 때 표시) ── */}
+        {viewMode !== 'main' && (
+          <div className="flex items-center gap-2 flex-wrap justify-center border-t pt-3 border-gray-100">
+            {activeGrade.units.map((unit) => (
+              <button
+                key={unit.id}
+                onClick={() => handleUnitChange(unit.id)}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 border ${
+                  activeUnitId === unit.id
+                    ? 'text-white border-transparent shadow-md scale-105'
+                    : 'text-[#8E9BAE] bg-white border-gray-100 hover:border-gray-200'
+                }`}
+                style={activeUnitId === unit.id ? { backgroundColor: activeGrade.color, boxShadow: `0 3px 12px ${shadow}` } : {}}
+              >
+                <span>{unit.emoji}</span>
+                <span>{unit.name}</span>
+              </button>
+            ))}
             <button
-              key={unit.id}
-              onClick={() => handleUnitChange(unit.id)}
+              onClick={() => setViewMode('leaderboard')}
               className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 border ${
-                activeUnitId === unit.id
-                  ? 'text-white border-transparent shadow-md scale-105'
+                viewMode === 'leaderboard'
+                  ? 'bg-amber-400 text-white border-transparent shadow-md scale-105'
                   : 'text-[#8E9BAE] bg-white border-gray-100 hover:border-gray-200'
               }`}
-              style={activeUnitId === unit.id ? { backgroundColor: activeGrade.color, boxShadow: `0 3px 12px ${shadow}` } : {}}
             >
-              <span>{unit.emoji}</span>
-              <span>{unit.name}</span>
+              <Trophy className="w-4 h-4" />
+              이 단원 명예의 전당
             </button>
-          ))}
-          <button
-            onClick={() => setViewMode('leaderboard')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 border ${
-              viewMode === 'leaderboard'
-                ? 'bg-amber-400 text-white border-transparent shadow-md scale-105'
-                : 'text-[#8E9BAE] bg-white border-gray-100 hover:border-gray-200'
-            }`}
-          >
-            <Trophy className="w-4 h-4" />
-            이 단원 명예의 전당
-          </button>
-        </div>
+          </div>
+        )}
       </header>
 
       {/* ───── 메인 ───── */}
       <main className="flex-grow flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-2xl">
+        <div className="w-full max-w-4xl">
+
+          {/* ── 메인 페이지 (viewMode === 'main') ── */}
+          {viewMode === 'main' && (
+            <div className="flex flex-col gap-10 w-full py-4 animate-fade-in">
+              {/* 히어로 환영 히어로 카드 */}
+              <div className="bg-gradient-to-br from-[#FFD1DC]/80 via-white to-[#B5EAD7]/80 rounded-[3rem] p-8 sm:p-14 shadow-[0_15px_50px_rgba(181,200,255,0.3)] border border-white flex flex-col items-center text-center gap-6 relative overflow-hidden">
+                <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#FF85A1]/20 rounded-full blur-2xl pointer-events-none" />
+                <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-[#52B788]/20 rounded-full blur-2xl pointer-events-none" />
+                
+                <span className="px-4 py-1.5 bg-white/90 backdrop-blur-md rounded-full text-xs sm:text-sm font-black text-[#FF85A1] shadow-sm tracking-wide border border-white">
+                  🏫 용수중학교 수학 학습 플랫폼
+                </span>
+
+                <h2 className="text-4xl sm:text-5xl font-black text-[#2D3748] tracking-tight leading-tight">
+                  용수중 수학교실 📐
+                </h2>
+                
+                <p className="text-base sm:text-xl text-[#6B7280] max-w-2xl font-medium leading-relaxed">
+                  재미있게 개념을 점검하고 수학 실력을 쑥쑥 올리는 학습 공간!<br />
+                  <span className="text-[#FF85A1] font-bold">1·2학기 전 과정</span> 단원별 25문제 풀에서 <span className="text-[#52B788] font-bold">랜덤 10문항</span>씩 풀어보세요!
+                </p>
+
+                {/* 특징 바 */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full mt-2">
+                  <div className="bg-white/80 backdrop-blur-md p-5 rounded-2xl border border-white shadow-sm flex flex-col items-center gap-2">
+                    <span className="text-3xl">📚</span>
+                    <span className="font-bold text-[#2D3748] text-base">전 학년 18개 단원</span>
+                    <span className="text-xs text-[#8E9BAE]">중1·중2·중3 (1·2학기 포함)</span>
+                  </div>
+                  <div className="bg-white/80 backdrop-blur-md p-5 rounded-2xl border border-white shadow-sm flex flex-col items-center gap-2">
+                    <span className="text-3xl">🎯</span>
+                    <span className="font-bold text-[#2D3748] text-base">랜덤 10문항 출제</span>
+                    <span className="text-xs text-[#8E9BAE]">25문제 풀 무작위 셔플</span>
+                  </div>
+                  <div className="bg-white/80 backdrop-blur-md p-5 rounded-2xl border border-white shadow-sm flex flex-col items-center gap-2">
+                    <span className="text-3xl">🏆</span>
+                    <span className="font-bold text-[#2D3748] text-base">명예의 전당</span>
+                    <span className="text-xs text-[#8E9BAE]">학번 로그인 후 점수 등록</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 학년 카드 선택 */}
+              <div className="flex flex-col gap-6">
+                <h3 className="text-2xl font-black text-[#2D3748] flex items-center gap-2 px-2">
+                  <BookOpen className="w-6 h-6 text-[#7B8DE0]" />
+                  학년별 수학교실 선택
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {GRADES.map((grade) => (
+                    <div
+                      key={grade.id}
+                      onClick={() => handleGradeChange(grade.id)}
+                      className="group bg-white rounded-[2.5rem] p-7 shadow-[0_10px_30px_rgba(181,200,255,0.2)] hover:shadow-[0_15px_40px_rgba(181,200,255,0.35)] transition-all duration-300 border border-white flex flex-col justify-between cursor-pointer hover:-translate-y-1.5"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-md" style={{ backgroundColor: grade.bgColor }}>
+                            {grade.emoji}
+                          </div>
+                          <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: grade.color }}>
+                            6개 단원
+                          </span>
+                        </div>
+                        <h4 className="text-2xl font-black text-[#2D3748] mb-2 group-hover:text-[#FF85A1] transition-colors">{grade.name} 수학교실</h4>
+                        <p className="text-xs text-[#8E9BAE] font-medium mb-4">1학기 (1~3단원) & 2학기 (4~6단원)</p>
+
+                        <div className="flex flex-col gap-1.5 bg-[#F8FBFE] p-3.5 rounded-2xl mb-6 text-xs text-[#4B5563]">
+                          {grade.units.slice(0, 3).map((u) => (
+                            <div key={u.id} className="flex items-center gap-1.5 font-medium">
+                              <span>{u.emoji}</span>
+                              <span className="truncate">{u.name}</span>
+                            </div>
+                          ))}
+                          <div className="text-[11px] text-[#A2B5E2] font-bold mt-1 text-center">+ 2학기 3개 단원 더보기</div>
+                        </div>
+                      </div>
+
+                      <button
+                        className="w-full py-3.5 text-white font-bold rounded-full transition-transform group-hover:scale-[1.02] shadow-md flex items-center justify-center gap-2"
+                        style={{ backgroundColor: grade.color }}
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        학습 시작하기
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── 홈: 단원 소개 + 퀴즈 시작 ── */}
           {viewMode === 'home' && (
-            <div className="bg-white rounded-[2.5rem] shadow-[0_12px_40px_rgba(199,206,234,0.3)] p-10 flex flex-col items-center gap-8 text-center">
+            <div className="bg-white rounded-[2.5rem] shadow-[0_12px_40px_rgba(199,206,234,0.3)] p-10 flex flex-col items-center gap-8 text-center max-w-2xl mx-auto">
               <div
                 className="w-24 h-24 rounded-full flex items-center justify-center text-5xl shadow-xl"
                 style={{ backgroundColor: gc + '60', boxShadow: `0 8px 30px ${shadow}` }}
@@ -1078,7 +1182,7 @@ export default function Home() {
               <div className="flex flex-col gap-3 w-full">
                 <div className="flex justify-center gap-6 text-sm text-[#8E9BAE] bg-[#F8FBFE] rounded-2xl p-4">
                   <div className="flex flex-col items-center gap-1">
-                    <span className="text-2xl font-black text-[#4B5563]">{activeUnit.questions.length}</span>
+                    <span className="text-2xl font-black text-[#4B5563]">10</span>
                     <span>출제 문항 수</span>
                   </div>
                   <div className="w-px bg-gray-100" />
@@ -1088,7 +1192,7 @@ export default function Home() {
                   </div>
                   <div className="w-px bg-gray-100" />
                   <div className="flex flex-col items-center gap-1">
-                    <span className="text-2xl font-black text-[#4B5563]">{activeUnit.questions.length}점</span>
+                    <span className="text-2xl font-black text-[#4B5563]">10점</span>
                     <span>만점 기준</span>
                   </div>
                 </div>
@@ -1105,7 +1209,7 @@ export default function Home() {
                   style={{ background: `linear-gradient(135deg, ${activeGrade.color}, ${gc})`, boxShadow: `0 8px 25px ${shadow}` }}
                 >
                   <Play className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
-                  퀴즈 시작하기! ({activeUnit.questions.length}문제)
+                  퀴즈 시작하기! (10문항)
                 </button>
 
                 <button
@@ -1269,7 +1373,7 @@ export default function Home() {
                   className="flex items-center justify-center gap-2 w-full py-3 text-[#8E9BAE] font-semibold rounded-full bg-[#F8FBFE] hover:bg-[#F0F4FF] transition-colors"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  다시 풀기 (25문항 셔플)
+                  다시 풀기 (10문항 셔플)
                 </button>
               </div>
             </div>
@@ -1595,7 +1699,7 @@ export default function Home() {
 
       {/* ───── 푸터 ───── */}
       <footer className="p-6 text-center text-xs text-[#A2B5E2] bg-white/40 backdrop-blur-md border-t border-white/60">
-        <p>📐 중등 수학교실 · 1학년 2학년 3학년 (1학기 & 2학기 25문항 풀세트 지원)</p>
+        <p>📐 용수중 수학교실 · 1학년 2학년 3학년 (25문항 풀 중 10문항 무작위 출제)</p>
       </footer>
     </div>
   );

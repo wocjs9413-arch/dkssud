@@ -46,38 +46,36 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
     }
   }, [currentUser, nicknameInput]);
 
-  // 방 상태 실시간 주기적 폴링 (1.5초마다 빠른 업데이트)
-  useEffect(() => {
-    if (!currentRoom) return;
+  // 방 상태 실시간 주기적 폴링 (1초마다 자동 동기화)
 
-    const interval = setInterval(async () => {
+
+  // 방 상태 실시간 주기적 폴링 (1초마다 빠른 업데이트)
+  useEffect(() => {
+    if (!currentRoom?.room_code) return;
+
+    const fetchRoomState = async () => {
       const res = await getStreamsRoomAction(currentRoom.room_code);
       if (res.success && res.room) {
         setCurrentRoom(res.room);
         if (res.players) {
           setPlayers(res.players);
-          
-          // 관리자가 관전 중인 학생의 최신 상태 업데이트
-          if (selectedPlayerForView) {
-            const updatedViewPlayer = res.players.find((p) => p.student_id === selectedPlayerForView.student_id);
-            if (updatedViewPlayer) {
-              setSelectedPlayerForView(updatedViewPlayer);
-            }
-          }
 
-          // 현재 학생 자신의 DB 보드가 서버에서 업데이트되었는지 동기화
-          if (currentUser && !isAdmin) {
-            const me = res.players.find((p) => p.student_id === currentUser.student_id);
-            if (me && me.board && me.board.length === 20) {
-              // 내 로컬에서 아직 입력 안 한 부분이 있으면 확정 목록과 매칭
-            }
-          }
+          // 관전 모달이 열려있는 경우 선택된 학생의 보드 실시간 동기화
+          setSelectedPlayerForView((prevView) => {
+            if (!prevView) return null;
+            const updated = res.players?.find((p) => p.student_id === prevView.student_id);
+            return updated || prevView;
+          });
         }
       }
-    }, 1500);
+    };
+
+    fetchRoomState();
+    const interval = setInterval(fetchRoomState, 1000);
 
     return () => clearInterval(interval);
-  }, [currentRoom, currentUser, isAdmin, selectedPlayerForView]);
+  }, [currentRoom?.room_code]);
+
 
   // 관리자: 방 생성
   const handleCreateRoom = async () => {
@@ -119,11 +117,17 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
       return;
     }
 
-    const room = getRes.room;
-    const studentId = currentUser ? currentUser.student_id : `guest_${Math.floor(1000 + Math.random() * 9000)}`;
+    let studentId = currentUser ? currentUser.student_id : localStorage.getItem('streams_guest_id');
+    if (!studentId) {
+      studentId = `guest_${Math.floor(1000 + Math.random() * 9000)}`;
+      if (!currentUser) {
+        localStorage.setItem('streams_guest_id', studentId);
+      }
+    }
 
     // 2. 방 참가 액션
-    const joinRes = await joinStreamsPlayerAction(room.id, studentId, nickname);
+    const joinRes = await joinStreamsPlayerAction(getRes.room.id, studentId, nickname);
+
     if (joinRes.success && joinRes.room) {
       setCurrentRoom(joinRes.room);
       if (joinRes.player && joinRes.player.board) {
@@ -136,6 +140,7 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
     }
     setLoading(false);
   };
+
 
   // 관리자: 숫자/★ 뽑기 (1~30, 11~20은 최대2번, ★ 포함)
   const handleDrawNumber = async () => {
@@ -193,10 +198,15 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
 
     // DB에 보드 및 점수 저장
     if (currentRoom) {
-      const studentId = currentUser ? currentUser.student_id : `guest_${nicknameInput}`;
+      let studentId = currentUser ? currentUser.student_id : localStorage.getItem('streams_guest_id');
+      if (!studentId) {
+        studentId = `guest_${Math.floor(1000 + Math.random() * 9000)}`;
+        localStorage.setItem('streams_guest_id', studentId);
+      }
       await updateStreamsPlayerBoardAction(currentRoom.id, studentId, newBoard);
     }
   };
+
 
   // 현재 라운드(최근 뽑힌 숫자)를 몇 명의 학생이 칸에 적었는지 계산
   const currentRoundFilledCount = currentRoom && currentRoom.numbers.length > 0

@@ -35,7 +35,10 @@ import {
   Search,
   BookOpen,
   RotateCcw,
+  Gamepad2,
 } from 'lucide-react';
+import StreamsGame from '@/app/components/StreamsGame';
+
 
 // ─── 타입 정의 ───────────────────────────────────────────────
 interface Question {
@@ -711,8 +714,9 @@ export default function Home() {
   const [activeGradeId, setActiveGradeId] = useState<string>('mid1');
   const [activeUnitId, setActiveUnitId] = useState<string>('mid1_unit1');
 
-  // 뷰 모드: 'main' | 'home' | 'quiz' | 'result' | 'leaderboard'
-  const [viewMode, setViewMode] = useState<'main' | 'home' | 'quiz' | 'result' | 'leaderboard'>('main');
+  // 뷰 모드: 'main' | 'home' | 'quiz' | 'result' | 'leaderboard' | 'game'
+  const [viewMode, setViewMode] = useState<'main' | 'home' | 'quiz' | 'result' | 'leaderboard' | 'game'>('main');
+
 
   // 현재 사용자
   const [currentUser, setCurrentUser] = useState<StudentUser | null>(null);
@@ -988,16 +992,28 @@ export default function Home() {
                 key={grade.id}
                 onClick={() => handleGradeChange(grade.id)}
                 className={`px-5 py-2 rounded-full text-base font-bold transition-all duration-200 ${
-                  viewMode !== 'main' && activeGradeId === grade.id
+                  viewMode !== 'main' && viewMode !== 'game' && activeGradeId === grade.id
                     ? 'text-white scale-105 shadow-lg'
                     : 'text-[#8E9BAE] hover:text-[#4B5563]'
                 }`}
-                style={viewMode !== 'main' && activeGradeId === grade.id ? { backgroundColor: grade.bgColor, boxShadow: `0 4px 15px ${grade.shadowColor}` } : {}}
+                style={viewMode !== 'main' && viewMode !== 'game' && activeGradeId === grade.id ? { backgroundColor: grade.bgColor, boxShadow: `0 4px 15px ${grade.shadowColor}` } : {}}
               >
                 {grade.name}
               </button>
             ))}
+            <button
+              onClick={() => setViewMode('game')}
+              className={`px-5 py-2 rounded-full text-base font-bold transition-all duration-200 flex items-center gap-1.5 ${
+                viewMode === 'game'
+                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white scale-105 shadow-lg'
+                  : 'text-purple-600 bg-purple-50 hover:bg-purple-100'
+              }`}
+            >
+              <Gamepad2 className="w-4 h-4" />
+              게임
+            </button>
           </nav>
+
 
           {/* 로그인 영역 */}
           <div>
@@ -1033,8 +1049,9 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── 단원 탭 (viewMode가 main이 아닐 때 표시) ── */}
-        {viewMode !== 'main' && (
+        {/* ── 단원 탭 (viewMode가 main, game이 아닐 때 표시) ── */}
+        {viewMode !== 'main' && viewMode !== 'game' && (
+
           <div className="flex items-center gap-2 flex-wrap justify-center border-t pt-3 border-gray-100">
             {activeGrade.units.map((unit) => (
               <button
@@ -1454,8 +1471,17 @@ export default function Home() {
               </button>
             </div>
           )}
+
+          {/* ── 게임 탭 (viewMode === 'game') ── */}
+          {viewMode === 'game' && (
+            <StreamsGame
+              currentUser={currentUser}
+              onOpenAuth={() => { resetAuthForm(); setShowAuthModal(true); }}
+            />
+          )}
         </div>
       </main>
+
 
       {/* ───── 모달: 로그인/비로그인 플레이 선택 ───── */}
       {showPlayChoiceModal && (

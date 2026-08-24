@@ -49,14 +49,30 @@ drop policy if exists "Allow public delete students" on public.students;
 create policy "Allow public delete students" on public.students for delete using (true);
 
 -- ==========================================
--- 단원 ID 목록 (참고용)
--- mid1_unit1 = 중1 1단원: 소인수분해
--- mid1_unit2 = 중1 2단원: 정수와 유리수
--- mid1_unit3 = 중1 3단원: 일차방정식
--- mid2_unit1 = 중2 1단원: 유리수와 순환소수
--- mid2_unit2 = 중2 2단원: 일차부등식
--- mid2_unit3 = 중2 3단원: 일차함수
--- mid3_unit1 = 중3 1단원: 제곱근과 실수
--- mid3_unit2 = 중3 2단원: 이차방정식
--- mid3_unit3 = 중3 3단원: 이차함수
+-- 4. 스트림스 게임용 테이블 생성
 -- ==========================================
+create table if not exists public.streams_rooms (
+    id uuid default gen_random_uuid() primary key,
+    room_code text not null unique,
+    created_by text not null,
+    numbers jsonb not null default '[]'::jsonb,
+    status text not null default 'waiting',
+    created_at timestamp with time zone default now()
+);
+
+create table if not exists public.streams_players (
+    id uuid default gen_random_uuid() primary key,
+    room_id uuid references public.streams_rooms(id) on delete cascade,
+    student_id text not null,
+    student_name text not null,
+    board jsonb not null default '[]'::jsonb,
+    score integer default 0,
+    updated_at timestamp with time zone default now()
+);
+
+alter table public.streams_rooms enable row level security;
+alter table public.streams_players enable row level security;
+
+create policy "Allow public access streams_rooms" on public.streams_rooms for all using (true) with check (true);
+create policy "Allow public access streams_players" on public.streams_players for all using (true) with check (true);
+

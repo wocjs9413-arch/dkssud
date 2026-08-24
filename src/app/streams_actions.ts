@@ -114,7 +114,47 @@ export async function getStreamsRoomAction(roomCode: string): Promise<{ success:
   }
 }
 
-// ── 학생 방 참가 (입장 전 닉네임 사용 가능, 게임 시작 시 접속 제한) ──
+// ── [관리자 전용] 생성된 전체 방 목록 조회 ──
+export async function getAllStreamsRoomsAction(creatorId: string): Promise<{ success: boolean; rooms?: StreamsRoom[]; error?: string }> {
+  if (creatorId.trim() !== '10000') {
+    return { success: false, error: '관리자 권한이 없습니다.' };
+  }
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('streams_rooms')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, rooms: (data as StreamsRoom[]) || [] };
+  } catch (e) {
+    console.error('getAllStreamsRooms exception:', e);
+    return { success: false, error: '방 목록 조회 오류' };
+  }
+}
+
+// ── [관리자 전용] 방 삭제 ──
+export async function deleteStreamsRoomAction(creatorId: string, roomId: string): Promise<{ success: boolean; error?: string }> {
+  if (creatorId.trim() !== '10000') {
+    return { success: false, error: '관리자 권한이 없습니다.' };
+  }
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase
+      .from('streams_rooms')
+      .delete()
+      .eq('id', roomId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e) {
+    console.error('deleteStreamsRoom exception:', e);
+    return { success: false, error: '방 삭제 오류' };
+  }
+}
+
+// ── 학생/관리자 방 참가 (입장 전 닉네임 사용 가능, 관리자는 언제든 참가 허용, 게임 시작 시 신규 학생 제한) ──
 export async function joinStreamsPlayerAction(
   roomId: string,
   studentId: string,
@@ -122,8 +162,9 @@ export async function joinStreamsPlayerAction(
 ): Promise<{ success: boolean; player?: StreamsPlayer; room?: StreamsRoom; error?: string }> {
   try {
     const supabase = await createClient();
+    const isAdmin = studentId.trim() === '10000';
 
-    // 1. 방 상태 확인 (playing 또는 ended 상태면 접속 불가)
+    // 1. 방 상태 확인
     const { data: room, error: roomErr } = await supabase
       .from('streams_rooms')
       .select('*')
@@ -142,12 +183,13 @@ export async function joinStreamsPlayerAction(
       .eq('student_id', studentId)
       .maybeSingle();
 
-    if (!existing && room.status !== 'waiting') {
+    // 관리자는 언제나 방에 재입장/참가할 수 있도록 체크 예외 적용
+    if (!existing && !isAdmin && room.status !== 'waiting') {
       return { success: false, error: '선생님이 이미 게임을 시작하셨습니다! 더 이상 참가할 수 없습니다.' };
     }
 
     if (existing) {
-      // 이미 입장한 학생이면 이름 업데이트
+      // 이미 입장한 학생/관리자면 이름 업데이트
       const { data: updated, error: updateErr } = await supabase
         .from('streams_players')
         .update({ student_name: studentName.trim() })
@@ -181,6 +223,7 @@ export async function joinStreamsPlayerAction(
     return { success: false, error: '방 입장 실패' };
   }
 }
+
 
 // ── 학생 보드 업데이트 (선생님이 뽑은 숫자를 지정한 위치에 배치) ──
 export async function updateStreamsPlayerBoardAction(

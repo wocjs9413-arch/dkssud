@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import {
   createStreamsRoomAction,
   getStreamsRoomAction,
+  getAllStreamsRoomsAction,
+  deleteStreamsRoomAction,
   joinStreamsPlayerAction,
   updateStreamsPlayerBoardAction,
   drawNextStreamsNumberAction,
@@ -15,7 +17,8 @@ import {
 import { STREAM_SCORE_TABLE } from '@/app/streams_constants';
 
 import { StudentUser } from '@/app/actions';
-import { Gamepad2, RefreshCw, Trophy, Sparkles, CheckCircle, Lock, Plus, Users, Crown, ArrowLeft, Eye, AlertCircle, Check, Table } from 'lucide-react';
+import { Gamepad2, RefreshCw, Trophy, Sparkles, CheckCircle, Lock, Plus, Users, Crown, ArrowLeft, Eye, AlertCircle, Check, Table, Trash2, Settings, Play } from 'lucide-react';
+
 
 
 interface StreamsGameProps {
@@ -131,6 +134,63 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
   }, [currentRoom?.room_code]);
 
 
+  // 관리자 방 관리 상태
+  const [adminRoomList, setAdminRoomList] = useState<StreamsRoom[]>([]);
+  const [loadingRoomList, setLoadingRoomList] = useState(false);
+
+  // 관리자 전용 전체 방 목록 불러오기
+  const fetchAdminRoomList = async () => {
+    if (!currentUser || !isAdmin) return;
+    setLoadingRoomList(true);
+    const res = await getAllStreamsRoomsAction(currentUser.student_id);
+    if (res.success && res.rooms) {
+      setAdminRoomList(res.rooms);
+    }
+    setLoadingRoomList(false);
+  };
+
+  useEffect(() => {
+    if (isAdmin && !currentRoom) {
+      fetchAdminRoomList();
+    }
+  }, [isAdmin, currentRoom]);
+
+  // 관리자: 만들어진 방 삭제
+  const handleDeleteRoom = async (roomId: string, roomCode: string) => {
+    if (!currentUser || !isAdmin) return;
+    if (!confirm(`방 코드 [ ${roomCode} ] 방을 삭제하시겠습니까?`)) return;
+    setLoading(true);
+    const res = await deleteStreamsRoomAction(currentUser.student_id, roomId);
+    if (res.success) {
+      fetchAdminRoomList();
+    } else {
+      alert(res.error || '방 삭제 실패');
+    }
+    setLoading(false);
+  };
+
+  // 관리자: 만들어진 방에 즉시 참가
+  const handleAdminEnterRoom = async (roomCode: string) => {
+    if (!currentUser || !isAdmin) return;
+    setLoading(true);
+    setErrorMsg('');
+    const getRes = await getStreamsRoomAction(roomCode);
+    if (!getRes.success || !getRes.room) {
+      setErrorMsg(getRes.error || '방 정보를 불러올 수 없습니다.');
+      setLoading(false);
+      return;
+    }
+
+    const joinRes = await joinStreamsPlayerAction(getRes.room.id, currentUser.student_id, currentUser.name);
+    if (joinRes.success && joinRes.room) {
+      setCurrentRoom(joinRes.room);
+      setPlayers(getRes.players || []);
+    } else {
+      setErrorMsg(joinRes.error || '방 입장 실패');
+    }
+    setLoading(false);
+  };
+
   // 관리자: 방 생성
   const handleCreateRoom = async () => {
     if (!currentUser || !isAdmin) return;
@@ -140,11 +200,13 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
     if (res.success && res.room) {
       setCurrentRoom(res.room);
       setPlayers([]);
+      fetchAdminRoomList();
     } else {
       setErrorMsg(res.error || '방 생성에 실패했습니다.');
     }
     setLoading(false);
   };
+
 
   // 학생/공통: 방 참가 (닉네임 필수, 게임 시작 후 제한)
   const handleJoinRoom = async (e?: React.FormEvent) => {
@@ -436,33 +498,108 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
             </div>
           </div>
 
-          {/* 관리자(선생님): 방 생성 */}
-          <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-[2.5rem] p-8 shadow-[0_10px_30px_rgba(181,200,255,0.2)] border border-amber-200/60 flex flex-col justify-between gap-6">
-            <div>
-              <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center text-2xl mb-4 font-bold">
-                🏫
-              </div>
-              <h3 className="text-2xl font-black text-[#2D3748] mb-2">선생님 전용 방 생성</h3>
-              <p className="text-sm text-gray-600 font-medium mb-6">
-                학생들과 실시간 스트림스 대결을 펼칠 새로운 게임 방을 생성하고 진행하세요.
-              </p>
-            </div>
+          {/* 관리자(선생님): 기존 생성된 방 관리 & 새 방 생성 */}
+          <div className="flex flex-col gap-6">
+            {/* [신규 기능] 관리자 전용: 만들어진 방 목록 및 관리 탭 (방 만들기 위에 위치) */}
+            {isAdmin && (
+              <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_10px_30px_rgba(181,200,255,0.2)] border border-purple-100 flex flex-col gap-4">
+                <div className="flex items-center justify-between border-b pb-3 border-gray-100">
+                  <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-purple-600" />
+                    생성된 방 목록 관리 및 언제든지 참가
+                  </h3>
+                  <button
+                    onClick={fetchAdminRoomList}
+                    className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-colors"
+                    title="목록 새로고침"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loadingRoomList ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
 
-            {isAdmin ? (
-              <button
-                onClick={handleCreateRoom}
-                disabled={loading}
-                className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <Plus className="w-5 h-5" />
-                {loading ? '생성 중...' : '새로운 멀티 방 만들기 ✨'}
-              </button>
-            ) : (
-              <div className="p-4 bg-white/80 rounded-2xl border border-amber-200 text-xs text-amber-800 font-semibold text-center">
-                💡 방 생성을 하려면 관리자 계정(학번 10000)으로 로그인해 주세요.
+                <div className="flex flex-col gap-2.5 max-h-60 overflow-y-auto pr-1">
+                  {loadingRoomList ? (
+                    <p className="text-xs text-gray-400 text-center py-4">방 목록 불러오는 중...</p>
+                  ) : adminRoomList.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">아직 생성된 방이 없습니다. 아래 버튼으로 새 방을 만드세요!</p>
+                  ) : (
+                    adminRoomList.map((room) => (
+                      <div
+                        key={room.id}
+                        className="flex items-center justify-between p-3.5 bg-[#F8FBFE] rounded-2xl border border-gray-100 hover:border-purple-200 transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-purple-100 text-purple-700 rounded-xl font-black flex items-center justify-center text-sm">
+                            {room.room_code}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-gray-800">방코드: {room.room_code}</span>
+                              {room.status === 'playing' ? (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[10px] font-bold">진행 중</span>
+                              ) : room.status === 'ended' ? (
+                                <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold">종료됨</span>
+                              ) : (
+                                <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-bold">대기 중</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-gray-400">
+                              뽑은 숫자: {room.numbers.length}/20 · {room.created_at ? new Date(room.created_at).toLocaleDateString() : ''}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleAdminEnterRoom(room.room_code)}
+                            className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-transform hover:scale-105 shadow-sm flex items-center gap-1"
+                          >
+                            <Play className="w-3 h-3 fill-current" /> 참가하기
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRoom(room.id, room.room_code)}
+                            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                            title="방 삭제"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
+
+            {/* 새로운 방 만들기 버튼 카드 */}
+            <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-[2.5rem] p-8 shadow-[0_10px_30px_rgba(181,200,255,0.2)] border border-amber-200/60 flex flex-col justify-between gap-6">
+              <div>
+                <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center text-2xl mb-4 font-bold">
+                  🏫
+                </div>
+                <h3 className="text-2xl font-black text-[#2D3748] mb-2">선생님 전용 방 생성</h3>
+                <p className="text-sm text-gray-600 font-medium mb-6">
+                  학생들과 실시간 스트림스 대결을 펼칠 새로운 게임 방을 생성하고 진행하세요.
+                </p>
+              </div>
+
+              {isAdmin ? (
+                <button
+                  onClick={handleCreateRoom}
+                  disabled={loading}
+                  className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-5 h-5" />
+                  {loading ? '생성 중...' : '새로운 멀티 방 만들기 ✨'}
+                </button>
+              ) : (
+                <div className="p-4 bg-white/80 rounded-2xl border border-amber-200 text-xs text-amber-800 font-semibold text-center">
+                  💡 방 생성을 하려면 관리자 계정(학번 10000)으로 로그인해 주세요.
+                </div>
+              )}
+            </div>
           </div>
+
         </div>
       )}
 

@@ -564,82 +564,81 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
             </div>
           )}
 
-          {/* ── 실시간 참가자 목록 & 닉네임 관전 클릭 ── */}
-          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_12px_40px_rgba(199,206,234,0.3)] border border-white flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b pb-4 border-gray-100">
-              <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-amber-500" />
-                실시간 참가 플레이어 현황 ({players.length}명)
-              </h3>
-              {isAdmin && (
+          {/* ── 실시간 참가자 목록 & 닉네임 관전 (선생님/관리자 전용) ── */}
+          {isAdmin && (
+            <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_12px_40px_rgba(199,206,234,0.3)] border border-white flex flex-col gap-4">
+              <div className="flex items-center justify-between border-b pb-4 border-gray-100">
+                <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-amber-500" />
+                  실시간 참가 플레이어 현황 및 실시간 관전 ({players.length}명)
+                </h3>
                 <span className="text-xs text-indigo-500 font-semibold">
-                  💡 학생을 클릭하면 실시간 화면(보드)을 관전할 수 있습니다.
+                  💡 학생 이름을 클릭하면 해당 학생의 ㄱ자 보드를 실시간으로 볼 수 있습니다.
                 </span>
-              )}
-            </div>
+              </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {players.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6 col-span-full">아직 접속한 학생이 없습니다.</p>
-              ) : (
-                players
-                  .sort((a, b) => (b.score || 0) - (a.score || 0))
-                  .map((p, idx) => {
-                    const filledCount = p.board ? p.board.filter((x) => x !== null && x !== undefined).length : 0;
-                    const isRoundFilled = currentRoom.numbers.length > 0 && filledCount >= currentRoom.numbers.length;
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {players.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6 col-span-full">아직 접속한 학생이 없습니다.</p>
+                ) : (
+                  players
+                    .sort((a, b) => (b.score || 0) - (a.score || 0))
+                    .map((p, idx) => {
+                      const filledCount = p.board ? p.board.filter((x) => x !== null && x !== undefined).length : 0;
+                      const isRoundFilled = currentRoom.numbers.length > 0 && filledCount >= currentRoom.numbers.length;
 
-                    return (
-                      <div
-                        key={p.student_id}
-                        onClick={() => isAdmin && setSelectedPlayerForView(p)}
-                        className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${
-                          isAdmin ? 'cursor-pointer hover:border-purple-300 hover:shadow-md' : ''
-                        } ${
-                          selectedPlayerForView?.student_id === p.student_id
-                            ? 'bg-purple-100 border-purple-400 ring-2 ring-purple-300'
-                            : 'bg-[#F8FBFE] border-gray-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${
-                            idx === 0 ? 'bg-amber-400 text-white shadow-md' : 'bg-gray-200 text-gray-600'
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          <div>
-                            <p className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
-                              {p.student_name}
-                              {isAdmin && <Eye className="w-3.5 h-3.5 text-purple-400" />}
-                            </p>
-                            <p className="text-[11px] text-gray-400">
-                              채운 칸: {filledCount}/20
-                            </p>
+                      return (
+                        <div
+                          key={p.student_id}
+                          onClick={() => setSelectedPlayerForView(p)}
+                          className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer hover:border-purple-300 hover:shadow-md ${
+                            selectedPlayerForView?.student_id === p.student_id
+                              ? 'bg-purple-100 border-purple-400 ring-2 ring-purple-300'
+                              : 'bg-[#F8FBFE] border-gray-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${
+                              idx === 0 ? 'bg-amber-400 text-white shadow-md' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                            <div>
+                              <p className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
+                                {p.student_name}
+                                <Eye className="w-3.5 h-3.5 text-purple-400" />
+                              </p>
+                              <p className="text-[11px] text-gray-400">
+                                채운 칸: {filledCount}/20
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="text-right flex flex-col items-end gap-1">
+                            <div>
+                              <span className="text-lg font-black text-indigo-600">{p.score || 0}</span>
+                              <span className="text-xs text-gray-400 ml-0.5">점</span>
+                            </div>
+                            {isRoundFilled ? (
+                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold flex items-center gap-0.5">
+                                <Check className="w-3 h-3" /> 배치 완료
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold">
+                                배치 대기 중
+                              </span>
+                            )}
                           </div>
                         </div>
-
-                        <div className="text-right flex flex-col items-end gap-1">
-                          <div>
-                            <span className="text-lg font-black text-indigo-600">{p.score || 0}</span>
-                            <span className="text-xs text-gray-400 ml-0.5">점</span>
-                          </div>
-                          {isRoundFilled ? (
-                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold flex items-center gap-0.5">
-                              <Check className="w-3 h-3" /> 이번 라운드 완료
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold">
-                              배치 대기 중
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-              )}
+                      );
+                    })
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
   );
 }
+

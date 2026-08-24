@@ -228,11 +228,20 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
   const currentRoundIndex = currentRoom?.numbers ? currentRoom.numbers.length - 1 : -1;
   const currentDrawnNumber = currentRoundIndex >= 0 ? currentRoom!.numbers[currentRoundIndex] : null;
 
-  // 학생: 선생님이 뽑은 숫자를 지정한 비어있는 칸에 배치 및 확정 (확인 후 수정 불가)
+  // 학생: 선생님이 뽑은 숫자를 지정한 비어있는 칸에 배치 및 확정 (라운드당 1회만 배치 가능)
   const handleConfirmPlacement = async (slotIdx: number) => {
     if (confirmedSlots[slotIdx]) return;
     if (currentDrawnNumber === null || currentDrawnNumber === undefined) {
       alert('선생님이 숫자를 뽑으실 때까지 기다려주세요!');
+      return;
+    }
+
+    // 현재 채워진 칸 수와 지금까지 선생님이 뽑은 라운드 수 비교
+    const currentFilledCount = confirmedSlots.filter(Boolean).length;
+    const totalDrawnRounds = currentRoom?.numbers.length || 0;
+
+    if (currentFilledCount >= totalDrawnRounds) {
+      alert(`이미 라운드 ${totalDrawnRounds}의 숫자를 보드에 배치하셨습니다! 다음 숫자가 뽑힐 때까지 기다려주세요.`);
       return;
     }
 
@@ -256,6 +265,7 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
       await updateStreamsPlayerBoardAction(currentRoom.id, studentId, newBoard);
     }
   };
+
 
 
   // 현재 라운드(최근 뽑힌 숫자)를 몇 명의 학생이 칸에 적었는지 계산
@@ -622,13 +632,42 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
                 )}
               </div>
 
+              {/* 라운드 배치 상태 알림 안내 */}
+              {(() => {
+                const currentFilled = confirmedSlots.filter(Boolean).length;
+                const totalDrawn = currentRoom?.numbers.length || 0;
+                const isAlreadyPlacedThisRound = totalDrawn > 0 && currentFilled >= totalDrawn;
+
+                if (totalDrawn === 0) {
+                  return (
+                    <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-2xl w-full text-center text-xs text-indigo-700 font-bold">
+                      💡 선생님이 첫 번째 숫자를 뽑으실 때까지 잠시만 대기해 주세요!
+                    </div>
+                  );
+                } else if (isAlreadyPlacedThisRound) {
+                  return (
+                    <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl w-full text-center text-xs text-emerald-800 font-bold flex items-center justify-center gap-1.5 animate-fade-in">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      라운드 {totalDrawn} 숫자 [ {currentDrawnNumber} ] 배치를 완료했습니다! 선생님이 다음 숫자를 뽑을 때까지 대기하세요. ⏳
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl w-full text-center text-xs text-amber-900 font-bold flex items-center justify-center gap-1.5 animate-pulse">
+                      🔔 라운드 {totalDrawn} 숫자 [ {currentDrawnNumber} ] (을)를 배치할 빈 칸을 클릭해 주세요!
+                    </div>
+                  );
+                }
+              })()}
+
               {selectedSlotIndex !== null && !confirmedSlots[selectedSlotIndex] && (
-                <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl w-full max-w-md text-center text-xs text-amber-900 font-bold animate-fade-in">
+                <div className="bg-amber-100 border border-amber-300 p-4 rounded-2xl w-full max-w-md text-center text-xs text-amber-950 font-bold animate-fade-in">
                   👉 {selectedSlotIndex + 1}번 칸에 숫자 [ {currentDrawnNumber} ] (을)를 넣으시겠습니까? 오른쪽 상단의 [배치 확정]을 클릭해 주세요!
                 </div>
               )}
             </div>
           )}
+
 
           {/* ── 스트림스 연결 길이별 점수표 (학생 & 관리자 모두 볼 수 있는 안내판) ── */}
           <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_10px_30px_rgba(181,200,255,0.2)] border border-white flex flex-col gap-4">

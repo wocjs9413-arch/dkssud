@@ -9,10 +9,11 @@ import {
   drawNextStreamsNumberAction,
   resetStreamsRoomAction,
   calculateStreamsScore,
-  STREAM_SCORE_TABLE,
   StreamsRoom,
   StreamsPlayer,
 } from '@/app/streams_actions';
+import { STREAM_SCORE_TABLE } from '@/app/streams_constants';
+
 import { StudentUser } from '@/app/actions';
 import { Gamepad2, RefreshCw, Trophy, Sparkles, CheckCircle, Lock, Plus, Users, Crown, ArrowLeft, Eye, AlertCircle, Check, Table } from 'lucide-react';
 

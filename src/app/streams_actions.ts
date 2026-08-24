@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
+import { STREAM_SCORE_TABLE } from '@/app/streams_constants';
 
 export interface StreamsRoom {
   id: string;
@@ -21,13 +22,8 @@ export interface StreamsPlayer {
   updated_at?: string;
 }
 
-// ── 스트림스 정확한 점수 계산표 (연속 오름차순 길이별 점수) ──
-export const STREAM_SCORE_TABLE: { [key: number]: number } = {
-  1: 0, 2: 1, 3: 3, 4: 5, 5: 7, 6: 9, 7: 11, 8: 15, 9: 20, 10: 25,
-  11: 30, 12: 35, 13: 40, 14: 50, 15: 60, 16: 70, 17: 85, 18: 100, 19: 150, 20: 300
-};
-
 export async function calculateStreamsScore(b: (number | string | null)[]): Promise<number> {
+
   let totalScore = 0;
   let currentLen = 0;
   let prevNum: number | null = null;

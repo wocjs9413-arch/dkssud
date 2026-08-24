@@ -23,24 +23,19 @@ export interface StreamsPlayer {
 }
 
 export async function calculateStreamsScore(b: (number | string | null)[]): Promise<number> {
-
   let totalScore = 0;
   let currentLen = 0;
   let prevNum: number | null = null;
 
   for (let i = 0; i < b.length; i++) {
     const val = b[i];
+    // 아직 비어있는 칸(null, undefined)은 연속 수열 단절 없이 뛰어넘음
     if (val === null || val === undefined) {
-      if (currentLen > 0) {
-        totalScore += STREAM_SCORE_TABLE[currentLen] || 0;
-        currentLen = 0;
-        prevNum = null;
-      }
       continue;
     }
 
     if (val === '★') {
-      // 조커 ★ 는 무조건 이전 수 이상으로 간주하여 오름차순 연결을 유지
+      // 조커 ★ 는 무조건 오름차순 연결을 유지
       currentLen++;
     } else {
       const num = Number(val);
@@ -61,6 +56,7 @@ export async function calculateStreamsScore(b: (number | string | null)[]): Prom
 
   return totalScore;
 }
+
 
 
 // ── 방 생성 ──

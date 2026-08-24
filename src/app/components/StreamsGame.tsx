@@ -35,7 +35,7 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
   const [myScore, setMyScore] = useState<number>(0);
 
-  // 실시간 학생 자가 점수 계산
+  // 실시간 학생 자가 점수 계산 (비어있는 중간 칸도 뛰어넘어 오름차순 수열 유지)
   useEffect(() => {
     let scoreAcc = 0;
     let currentLen = 0;
@@ -44,11 +44,6 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
     for (let i = 0; i < myBoard.length; i++) {
       const val = myBoard[i];
       if (val === null || val === undefined) {
-        if (currentLen > 0) {
-          scoreAcc += STREAM_SCORE_TABLE[currentLen] || 0;
-          currentLen = 0;
-          prevNum = null;
-        }
         continue;
       }
 
@@ -73,6 +68,7 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
 
     setMyScore(scoreAcc);
   }, [myBoard]);
+
 
   
   // 관리자 관전 전용 상태

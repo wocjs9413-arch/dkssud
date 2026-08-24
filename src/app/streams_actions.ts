@@ -22,13 +22,12 @@ export interface StreamsPlayer {
 }
 
 // ── 스트림스 정확한 점수 계산표 (연속 오름차순 길이별 점수) ──
-const STREAM_SCORE_TABLE: { [key: number]: number } = {
+export const STREAM_SCORE_TABLE: { [key: number]: number } = {
   1: 0, 2: 1, 3: 3, 4: 5, 5: 7, 6: 9, 7: 11, 8: 15, 9: 20, 10: 25,
-  11: 30, 12: 35, 13: 40, 14: 50, 15: 60, 16: 70, 17: 80, 18: 90, 19: 100, 20: 300
+  11: 30, 12: 35, 13: 40, 14: 50, 15: 60, 16: 70, 17: 85, 18: 100, 19: 150, 20: 300
 };
 
 export async function calculateStreamsScore(b: (number | string | null)[]): Promise<number> {
-
   let totalScore = 0;
   let currentLen = 0;
   let prevNum: number | null = null;
@@ -45,7 +44,7 @@ export async function calculateStreamsScore(b: (number | string | null)[]): Prom
     }
 
     if (val === '★') {
-      // 조커 ★ 는 무조건 오름차순으로 인정하여 길이를 증가시킴
+      // 조커 ★ 는 무조건 이전 수 이상으로 간주하여 오름차순 연결을 유지
       currentLen++;
     } else {
       const num = Number(val);
@@ -66,6 +65,7 @@ export async function calculateStreamsScore(b: (number | string | null)[]): Prom
 
   return totalScore;
 }
+
 
 // ── 방 생성 ──
 export async function createStreamsRoomAction(creatorId: string): Promise<{ success: boolean; room?: StreamsRoom; error?: string }> {

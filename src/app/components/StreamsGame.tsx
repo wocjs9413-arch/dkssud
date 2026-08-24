@@ -9,11 +9,13 @@ import {
   drawNextStreamsNumberAction,
   resetStreamsRoomAction,
   calculateStreamsScore,
+  STREAM_SCORE_TABLE,
   StreamsRoom,
   StreamsPlayer,
 } from '@/app/streams_actions';
 import { StudentUser } from '@/app/actions';
-import { Gamepad2, RefreshCw, Trophy, Sparkles, CheckCircle, Lock, Plus, Users, Crown, ArrowLeft, Eye, AlertCircle, Check } from 'lucide-react';
+import { Gamepad2, RefreshCw, Trophy, Sparkles, CheckCircle, Lock, Plus, Users, Crown, ArrowLeft, Eye, AlertCircle, Check, Table } from 'lucide-react';
+
 
 interface StreamsGameProps {
   currentUser: StudentUser | null;
@@ -30,6 +32,47 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
   const [myBoard, setMyBoard] = useState<(number | string | null)[]>(Array(20).fill(null));
   const [confirmedSlots, setConfirmedSlots] = useState<boolean[]>(Array(20).fill(false));
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
+  const [myScore, setMyScore] = useState<number>(0);
+
+  // 실시간 학생 자가 점수 계산
+  useEffect(() => {
+    let scoreAcc = 0;
+    let currentLen = 0;
+    let prevNum: number | null = null;
+
+    for (let i = 0; i < myBoard.length; i++) {
+      const val = myBoard[i];
+      if (val === null || val === undefined) {
+        if (currentLen > 0) {
+          scoreAcc += STREAM_SCORE_TABLE[currentLen] || 0;
+          currentLen = 0;
+          prevNum = null;
+        }
+        continue;
+      }
+
+      if (val === '★') {
+        currentLen++;
+      } else {
+        const num = Number(val);
+        if (prevNum === null || num >= prevNum) {
+          currentLen++;
+          prevNum = num;
+        } else {
+          scoreAcc += STREAM_SCORE_TABLE[currentLen] || 0;
+          currentLen = 1;
+          prevNum = num;
+        }
+      }
+    }
+
+    if (currentLen > 0) {
+      scoreAcc += STREAM_SCORE_TABLE[currentLen] || 0;
+    }
+
+    setMyScore(scoreAcc);
+  }, [myBoard]);
+
   
   // 관리자 관전 전용 상태
   const [selectedPlayerForView, setSelectedPlayerForView] = useState<StreamsPlayer | null>(null);
@@ -508,7 +551,7 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
           {/* ── 학생 화면: 내 ㄱ자 보드에 숫자 넣기 ── */}
           {!isAdmin && (
             <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_12px_40px_rgba(199,206,234,0.3)] border border-white flex flex-col items-center gap-4">
-              <div className="flex items-center justify-between w-full border-b pb-4 border-gray-100">
+              <div className="flex flex-col sm:flex-row items-center justify-between w-full border-b pb-4 border-gray-100 gap-3">
                 <div>
                   <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
                     <Gamepad2 className="w-5 h-5 text-indigo-500" />
@@ -519,14 +562,25 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
                   </p>
                 </div>
 
-                {selectedSlotIndex !== null && (
-                  <button
-                    onClick={() => handleConfirmPlacement(selectedSlotIndex)}
-                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-full text-sm shadow-md transition-all flex items-center gap-1.5 animate-pulse"
-                  >
-                    <Check className="w-4 h-4" /> {selectedSlotIndex + 1}번 칸에 배치 확정 (수정 불가)
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {/* 실시간 자동 계산 점수 뱃지 */}
+                  <div className="px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-2xl shadow-md flex items-center gap-2">
+                    <Trophy className="w-5 h-5" />
+                    <div>
+                      <p className="text-[10px] uppercase font-bold opacity-90">실시간 자동계산 점수</p>
+                      <p className="text-lg font-black leading-none">{myScore}점</p>
+                    </div>
+                  </div>
+
+                  {selectedSlotIndex !== null && (
+                    <button
+                      onClick={() => handleConfirmPlacement(selectedSlotIndex)}
+                      className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-full text-sm shadow-md transition-all flex items-center gap-1.5 animate-pulse"
+                    >
+                      <Check className="w-4 h-4" /> {selectedSlotIndex + 1}번 칸에 배치 확정 (수정 불가)
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* ㄱ자 보드 그리드 (인터랙티브 활성화) */}
@@ -539,6 +593,32 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
               )}
             </div>
           )}
+
+          {/* ── 스트림스 연결 길이별 점수표 (학생 & 관리자 모두 볼 수 있는 안내판) ── */}
+          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_10px_30px_rgba(181,200,255,0.2)] border border-white flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-3 border-gray-100">
+              <h3 className="text-lg font-black text-gray-800 flex items-center gap-2">
+                <Table className="w-5 h-5 text-indigo-500" />
+                스트림스 연속 수열 길이별 득점표
+              </h3>
+              <span className="text-xs text-gray-400 font-semibold">
+                💡 연속 오름차순으로 묶인 칸 수에 따라 점수가 부여됩니다.
+              </span>
+            </div>
+
+            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-10 gap-2">
+              {Object.entries(STREAM_SCORE_TABLE).map(([len, score]) => (
+                <div
+                  key={len}
+                  className="flex flex-col items-center justify-center p-2 bg-[#F8FBFE] border border-gray-100 rounded-xl text-center"
+                >
+                  <span className="text-[11px] font-bold text-gray-400">{len}개 묶음</span>
+                  <span className="text-sm font-black text-indigo-600 mt-0.5">{score}점</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
 
           {/* ── 관리자 관전 화면: 특정 학생의 보드 실시간 조회 모달/영역 ── */}
           {isAdmin && selectedPlayerForView && (

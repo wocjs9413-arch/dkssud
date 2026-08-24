@@ -2,7 +2,6 @@
 
 import { createClient } from '@/utils/supabase/server';
 
-
 export interface StreamsRoom {
   id: string;
   room_code: string;
@@ -20,6 +19,52 @@ export interface StreamsPlayer {
   board: (number | string | null)[]; // 20 slots array
   score?: number;
   updated_at?: string;
+}
+
+// ── 스트림스 정확한 점수 계산표 (연속 오름차순 길이별 점수) ──
+const STREAM_SCORE_TABLE: { [key: number]: number } = {
+  1: 0, 2: 1, 3: 3, 4: 5, 5: 7, 6: 9, 7: 11, 8: 15, 9: 20, 10: 25,
+  11: 30, 12: 35, 13: 40, 14: 50, 15: 60, 16: 70, 17: 80, 18: 90, 19: 100, 20: 300
+};
+
+export async function calculateStreamsScore(b: (number | string | null)[]): Promise<number> {
+
+  let totalScore = 0;
+  let currentLen = 0;
+  let prevNum: number | null = null;
+
+  for (let i = 0; i < b.length; i++) {
+    const val = b[i];
+    if (val === null || val === undefined) {
+      if (currentLen > 0) {
+        totalScore += STREAM_SCORE_TABLE[currentLen] || 0;
+        currentLen = 0;
+        prevNum = null;
+      }
+      continue;
+    }
+
+    if (val === '★') {
+      // 조커 ★ 는 무조건 오름차순으로 인정하여 길이를 증가시킴
+      currentLen++;
+    } else {
+      const num = Number(val);
+      if (prevNum === null || num >= prevNum) {
+        currentLen++;
+        prevNum = num;
+      } else {
+        totalScore += STREAM_SCORE_TABLE[currentLen] || 0;
+        currentLen = 1;
+        prevNum = num;
+      }
+    }
+  }
+
+  if (currentLen > 0) {
+    totalScore += STREAM_SCORE_TABLE[currentLen] || 0;
+  }
+
+  return totalScore;
 }
 
 // ── 방 생성 ──
@@ -77,113 +122,106 @@ export async function getStreamsRoomAction(roomCode: string): Promise<{ success:
   }
 }
 
-// ── 학생 방 참가 / 업데이트 ──
-export async function joinOrUpdateStreamsPlayerAction(
+// ── 학생 방 참가 (입장 전 닉네임 사용 가능, 게임 시작 시 접속 제한) ──
+export async function joinStreamsPlayerAction(
   roomId: string,
   studentId: string,
-  studentName: string,
-  board: (number | string | null)[]
-): Promise<{ success: boolean; player?: StreamsPlayer; error?: string }> {
+  studentName: string
+): Promise<{ success: boolean; player?: StreamsPlayer; room?: StreamsRoom; error?: string }> {
   try {
     const supabase = await createClient();
-    
-    // 플레이어 점수 계산 (오름차순 연결 길이 기준 간이 계산)
-    const calculateBoardScore = (b: (number | string | null)[]) => {
-      // 숫자 및 ★ 계산 logic
-      let maxScore = 0;
-      // 스트림스 기본 점수표 (길이에 따른 점수)
-      const scoreTable: { [key: number]: number } = {
-        1: 0, 2: 1, 3: 3, 4: 5, 5: 7, 6: 9, 7: 11, 8: 15, 9: 20, 10: 25,
-        11: 30, 12: 35, 13: 40, 14: 50, 15: 60, 16: 70, 17: 80, 18: 90, 19: 100, 20: 300
-      };
-      
-      // 입력된 연속 오름차순 구간들의 점수 합 계산
-      let currentLen = 0;
-      let prevVal: number | null = null;
-      let totalScore = 0;
 
-      for (let i = 0; i < b.length; i++) {
-        const val = b[i];
-        if (val === null || val === undefined) {
-          if (currentLen > 0) {
-            totalScore += scoreTable[currentLen] || 0;
-            currentLen = 0;
-            prevVal = null;
-          }
-          continue;
-        }
+    // 1. 방 상태 확인 (playing 또는 ended 상태면 접속 불가)
+    const { data: room, error: roomErr } = await supabase
+      .from('streams_rooms')
+      .select('*')
+      .eq('id', roomId)
+      .single();
 
-        let numVal = 0;
-        if (val === '★') {
-          // 조커 ★ 는 유연하게 연결 가능
-          numVal = prevVal !== null ? prevVal : 0;
-        } else {
-          numVal = Number(val);
-        }
+    if (roomErr || !room) {
+      return { success: false, error: '존재하지 않는 방입니다.' };
+    }
 
-        if (prevVal === null || numVal >= prevVal || val === '★') {
-          currentLen++;
-          if (val !== '★') prevVal = numVal;
-        } else {
-          totalScore += scoreTable[currentLen] || 0;
-          currentLen = 1;
-          prevVal = numVal;
-        }
-      }
-      if (currentLen > 0) {
-        totalScore += scoreTable[currentLen] || 0;
-      }
-      return totalScore;
-    };
-
-    const calculatedScore = calculateBoardScore(board);
-
+    // 이미 플레이어가 참가되어 있는지 검사
     const { data: existing } = await supabase
       .from('streams_players')
-      .select('id')
+      .select('*')
       .eq('room_id', roomId)
       .eq('student_id', studentId)
       .maybeSingle();
 
+    if (!existing && room.status !== 'waiting') {
+      return { success: false, error: '선생님이 이미 게임을 시작하셨습니다! 더 이상 참가할 수 없습니다.' };
+    }
+
     if (existing) {
-      const { data, error } = await supabase
+      // 이미 입장한 학생이면 이름 업데이트
+      const { data: updated, error: updateErr } = await supabase
         .from('streams_players')
-        .update({
-          board,
-          score: calculatedScore,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ student_name: studentName.trim() })
         .eq('id', existing.id)
         .select()
         .single();
 
-      if (error) return { success: false, error: error.message };
-      return { success: true, player: data as StreamsPlayer };
+      if (updateErr) return { success: false, error: updateErr.message };
+      return { success: true, player: updated as StreamsPlayer, room: room as StreamsRoom };
     } else {
-      const { data, error } = await supabase
+      // 신규 플레이어 등록
+      const { data: created, error: insertErr } = await supabase
         .from('streams_players')
         .insert([
           {
             room_id: roomId,
             student_id: studentId,
-            student_name: studentName,
-            board,
-            score: calculatedScore,
+            student_name: studentName.trim(),
+            board: Array(20).fill(null),
+            score: 0,
           },
         ])
         .select()
         .single();
 
-      if (error) return { success: false, error: error.message };
-      return { success: true, player: data as StreamsPlayer };
+      if (insertErr) return { success: false, error: insertErr.message };
+      return { success: true, player: created as StreamsPlayer, room: room as StreamsRoom };
     }
   } catch (e) {
-    console.error('joinOrUpdateStreamsPlayer exception:', e);
-    return { success: false, error: '플레이어 등록/업데이트 실패' };
+    console.error('joinStreamsPlayer exception:', e);
+    return { success: false, error: '방 입장 실패' };
   }
 }
 
-// ── 관리자 숫자/★ 뽑기 (1~30, 중복 불가, 11~20은 최대 2번까지, ★ 포함) ──
+// ── 학생 보드 업데이트 (선생님이 뽑은 숫자를 지정한 위치에 배치) ──
+export async function updateStreamsPlayerBoardAction(
+  roomId: string,
+  studentId: string,
+  board: (number | string | null)[]
+): Promise<{ success: boolean; player?: StreamsPlayer; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const calculatedScore = await calculateStreamsScore(board);
+
+
+    const { data, error } = await supabase
+      .from('streams_players')
+      .update({
+        board,
+        score: calculatedScore,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('room_id', roomId)
+      .eq('student_id', studentId)
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, player: data as StreamsPlayer };
+  } catch (e) {
+    console.error('updateStreamsPlayerBoard exception:', e);
+    return { success: false, error: '보드 저장 실패' };
+  }
+}
+
+// ── 관리자 숫자/★ 뽑기 (라운드 시작 -> 방 상태 'playing'으로 변경하여 추가 신규 접속 차단) ──
 export async function drawNextStreamsNumberAction(roomId: string, currentNumbers: (number | string)[]): Promise<{ success: boolean; newNumber?: number | string; room?: StreamsRoom; error?: string }> {
   try {
     if (currentNumbers.length >= 20) {

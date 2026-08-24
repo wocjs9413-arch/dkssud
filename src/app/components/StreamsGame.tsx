@@ -4,14 +4,16 @@ import { useState, useEffect } from 'react';
 import {
   createStreamsRoomAction,
   getStreamsRoomAction,
-  joinOrUpdateStreamsPlayerAction,
+  joinStreamsPlayerAction,
+  updateStreamsPlayerBoardAction,
   drawNextStreamsNumberAction,
   resetStreamsRoomAction,
+  calculateStreamsScore,
   StreamsRoom,
   StreamsPlayer,
 } from '@/app/streams_actions';
 import { StudentUser } from '@/app/actions';
-import { Gamepad2, RefreshCw, Trophy, Sparkles, CheckCircle, Lock, Play, Plus, Users, Crown, ArrowLeft } from 'lucide-react';
+import { Gamepad2, RefreshCw, Trophy, Sparkles, CheckCircle, Lock, Plus, Users, Crown, ArrowLeft, Eye, AlertCircle, Check } from 'lucide-react';
 
 interface StreamsGameProps {
   currentUser: StudentUser | null;
@@ -20,18 +22,31 @@ interface StreamsGameProps {
 
 export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProps) {
   const [roomCodeInput, setRoomCodeInput] = useState('');
+  const [nicknameInput, setNicknameInput] = useState(currentUser?.name || '');
   const [currentRoom, setCurrentRoom] = useState<StreamsRoom | null>(null);
   const [players, setPlayers] = useState<StreamsPlayer[]>([]);
+  
+  // 학생 플레이용 보드 상태
   const [myBoard, setMyBoard] = useState<(number | string | null)[]>(Array(20).fill(null));
   const [confirmedSlots, setConfirmedSlots] = useState<boolean[]>(Array(20).fill(false));
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
-  const [inputVal, setInputVal] = useState<string>('');
+  
+  // 관리자 관전 전용 상태
+  const [selectedPlayerForView, setSelectedPlayerForView] = useState<StreamsPlayer | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const isAdmin = currentUser?.student_id === '10000';
 
-  // 방 상태 실시간 주기적 폴링 (2초마다)
+  // 닉네임 기본값 설정
+  useEffect(() => {
+    if (currentUser?.name && !nicknameInput) {
+      setNicknameInput(currentUser.name);
+    }
+  }, [currentUser, nicknameInput]);
+
+  // 방 상태 실시간 주기적 폴링 (1.5초마다 빠른 업데이트)
   useEffect(() => {
     if (!currentRoom) return;
 
@@ -41,19 +56,28 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
         setCurrentRoom(res.room);
         if (res.players) {
           setPlayers(res.players);
-          // 내 보드 상태가 동기화되지 않은 경우 반영
-          if (currentUser) {
+          
+          // 관리자가 관전 중인 학생의 최신 상태 업데이트
+          if (selectedPlayerForView) {
+            const updatedViewPlayer = res.players.find((p) => p.student_id === selectedPlayerForView.student_id);
+            if (updatedViewPlayer) {
+              setSelectedPlayerForView(updatedViewPlayer);
+            }
+          }
+
+          // 현재 학생 자신의 DB 보드가 서버에서 업데이트되었는지 동기화
+          if (currentUser && !isAdmin) {
             const me = res.players.find((p) => p.student_id === currentUser.student_id);
             if (me && me.board && me.board.length === 20) {
-              // 학생이 이미 확정한 칸은 유지하면서 동기화
+              // 내 로컬에서 아직 입력 안 한 부분이 있으면 확정 목록과 매칭
             }
           }
         }
       }
-    }, 2000);
+    }, 1500);
 
     return () => clearInterval(interval);
-  }, [currentRoom, currentUser]);
+  }, [currentRoom, currentUser, isAdmin, selectedPlayerForView]);
 
   // 관리자: 방 생성
   const handleCreateRoom = async () => {
@@ -70,33 +94,50 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
     setLoading(false);
   };
 
-  // 학생/공통: 방 참가
+  // 학생/공통: 방 참가 (닉네임 필수, 게임 시작 후 제한)
   const handleJoinRoom = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!roomCodeInput.trim()) return;
+    if (!roomCodeInput.trim()) {
+      setErrorMsg('방 코드를 입력해주세요.');
+      return;
+    }
+
+    const nickname = nicknameInput.trim() || (currentUser ? currentUser.name : '학생');
+    if (!nickname) {
+      setErrorMsg('닉네임을 입력해주세요.');
+      return;
+    }
+
     setLoading(true);
     setErrorMsg('');
-    const res = await getStreamsRoomAction(roomCodeInput.trim());
-    if (res.success && res.room) {
-      setCurrentRoom(res.room);
-      setPlayers(res.players || []);
-      // 기존 참가 기록 확인
-      if (currentUser && res.players) {
-        const me = res.players.find((p) => p.student_id === currentUser.student_id);
-        if (me && me.board && me.board.length === 20) {
-          setMyBoard(me.board);
-          // 이미 값이 있는 칸은 확정 처리
-          const conf = me.board.map((v) => v !== null && v !== undefined);
-          setConfirmedSlots(conf);
-        }
+
+    // 1. 방 조회
+    const getRes = await getStreamsRoomAction(roomCodeInput.trim());
+    if (!getRes.success || !getRes.room) {
+      setErrorMsg(getRes.error || '존재하지 않는 방 코드입니다.');
+      setLoading(false);
+      return;
+    }
+
+    const room = getRes.room;
+    const studentId = currentUser ? currentUser.student_id : `guest_${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // 2. 방 참가 액션
+    const joinRes = await joinStreamsPlayerAction(room.id, studentId, nickname);
+    if (joinRes.success && joinRes.room) {
+      setCurrentRoom(joinRes.room);
+      if (joinRes.player && joinRes.player.board) {
+        setMyBoard(joinRes.player.board);
+        const conf = joinRes.player.board.map((v) => v !== null && v !== undefined);
+        setConfirmedSlots(conf);
       }
     } else {
-      setErrorMsg(res.error || '방을 찾을 수 없습니다.');
+      setErrorMsg(joinRes.error || '방 참가에 실패했습니다.');
     }
     setLoading(false);
   };
 
-  // 관리자: 숫자 뽑기 (1~30, 11~20은 최대2번, ★ 포함)
+  // 관리자: 숫자/★ 뽑기 (1~30, 11~20은 최대2번, ★ 포함)
   const handleDrawNumber = async () => {
     if (!currentRoom || !isAdmin) return;
     setLoading(true);
@@ -113,7 +154,7 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
   // 관리자: 게임 리셋
   const handleResetGame = async () => {
     if (!currentRoom || !isAdmin) return;
-    if (!confirm('게임을 리셋하고 새로 시작하시겠습니까?')) return;
+    if (!confirm('게임을 리셋하고 새로 시작하시겠습니까? (이전 플레이어들의 보드가 초기화됩니다)')) return;
     setLoading(true);
     const res = await resetStreamsRoomAction(currentRoom.id);
     if (res.success && res.room) {
@@ -121,79 +162,78 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
       setMyBoard(Array(20).fill(null));
       setConfirmedSlots(Array(20).fill(false));
       setSelectedSlotIndex(null);
+      setSelectedPlayerForView(null);
     } else {
       setErrorMsg(res.error || '리셋 실패');
     }
     setLoading(false);
   };
 
-  // 학생: 칸 선택 후 값 입력 & 확인 (확인 후 수정 불가)
-  const handleConfirmSlot = async (slotIdx: number) => {
-    if (confirmedSlots[slotIdx]) return;
-    if (!currentUser) {
-      alert('로그인이 필요합니다.');
-      onOpenAuth();
-      return;
-    }
-    if (!inputVal) return;
+  // 최근 선생님이 뽑은 가장 최신 숫자
+  const currentRoundIndex = currentRoom?.numbers ? currentRoom.numbers.length - 1 : -1;
+  const currentDrawnNumber = currentRoundIndex >= 0 ? currentRoom!.numbers[currentRoundIndex] : null;
 
-    let finalVal: number | string = inputVal.trim();
-    if (finalVal !== '★') {
-      const num = parseInt(finalVal, 10);
-      if (isNaN(num) || num < 1 || num > 30) {
-        alert('1~30 사이의 숫자 또는 ★ 기호를 입력해주세요!');
-        return;
-      }
-      finalVal = num;
+  // 학생: 선생님이 뽑은 숫자를 지정한 비어있는 칸에 배치 및 확정 (확인 후 수정 불가)
+  const handleConfirmPlacement = async (slotIdx: number) => {
+    if (confirmedSlots[slotIdx]) return;
+    if (currentDrawnNumber === null || currentDrawnNumber === undefined) {
+      alert('선생님이 숫자를 뽑으실 때까지 기다려주세요!');
+      return;
     }
 
     const newBoard = [...myBoard];
-    newBoard[slotIdx] = finalVal;
+    newBoard[slotIdx] = currentDrawnNumber;
+
     const newConfirmed = [...confirmedSlots];
     newConfirmed[slotIdx] = true;
 
     setMyBoard(newBoard);
     setConfirmedSlots(newConfirmed);
     setSelectedSlotIndex(null);
-    setInputVal('');
 
-    // 서버에 보드 상태 업데이트 저장
+    // DB에 보드 및 점수 저장
     if (currentRoom) {
-      await joinOrUpdateStreamsPlayerAction(currentRoom.id, currentUser.student_id, currentUser.name, newBoard);
+      const studentId = currentUser ? currentUser.student_id : `guest_${nicknameInput}`;
+      await updateStreamsPlayerBoardAction(currentRoom.id, studentId, newBoard);
     }
   };
 
-  // 최근 뽑힌 가장 최신 숫자
-  const lastDrawnNumber = currentRoom?.numbers && currentRoom.numbers.length > 0
-    ? currentRoom.numbers[currentRoom.numbers.length - 1]
-    : null;
+  // 현재 라운드(최근 뽑힌 숫자)를 몇 명의 학생이 칸에 적었는지 계산
+  const currentRoundFilledCount = currentRoom && currentRoom.numbers.length > 0
+    ? players.filter((p) => p.board && p.board.filter((x) => x !== null && x !== undefined).length >= currentRoom.numbers.length).length
+    : 0;
 
-  // ㄱ자 20칸 좌표 배치 (상단 가로 12칸, 우측 세로 8칸 -> 총 20칸 ㄱ자)
-  // 0~11: 1행(가로 12칸), 12~19: 2~9행의 가장 오른쪽 열 (세로 8칸)
-  const renderLShapedGrid = () => {
+  // ㄱ자 20칸 그리드 컴포넌트 (학생용 / 관리자 관전용 공용)
+  const renderLShapedGrid = (
+    boardData: (number | string | null)[],
+    confirmedData: boolean[],
+    isInteractive: boolean = false
+  ) => {
     return (
-      <div className="flex flex-col gap-2 items-center justify-center my-6 overflow-x-auto p-4 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 rounded-3xl border border-indigo-100/60 shadow-inner">
-        {/* 가로 12칸 (인덱스 0 ~ 11) */}
-        <div className="flex gap-2">
+      <div className="flex flex-col gap-2 items-center justify-center my-4 overflow-x-auto p-4 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 rounded-3xl border border-indigo-100/60 shadow-inner">
+        {/* 가로 12칸 (0 ~ 11) */}
+        <div className="flex gap-1.5 sm:gap-2">
           {Array.from({ length: 12 }).map((_, i) => {
             const idx = i;
-            const val = myBoard[idx];
-            const isConfirmed = confirmedSlots[idx];
+            const val = boardData[idx];
+            const isConfirmed = confirmedData[idx];
             const isSelected = selectedSlotIndex === idx;
 
             return (
               <div
                 key={idx}
-                onClick={() => !isConfirmed && setSelectedSlotIndex(idx)}
-                className={`w-12 h-14 sm:w-14 sm:h-16 rounded-2xl flex flex-col items-center justify-center font-black text-base sm:text-lg transition-all duration-200 cursor-pointer relative shadow-sm border ${
+                onClick={() => isInteractive && !isConfirmed && setSelectedSlotIndex(idx)}
+                className={`w-11 h-13 sm:w-14 sm:h-16 rounded-2xl flex flex-col items-center justify-center font-black text-sm sm:text-lg transition-all duration-200 relative shadow-sm border ${
                   isConfirmed
                     ? 'bg-gradient-to-b from-emerald-500 to-teal-600 text-white border-emerald-400 shadow-md scale-[0.98]'
                     : isSelected
-                    ? 'bg-amber-100 text-amber-900 border-amber-400 ring-4 ring-amber-300/50 scale-105 z-10'
-                    : 'bg-white text-gray-700 border-indigo-100 hover:border-indigo-300 hover:scale-105'
+                    ? 'bg-amber-100 text-amber-900 border-amber-400 ring-4 ring-amber-300/50 scale-105 z-10 cursor-pointer'
+                    : isInteractive
+                    ? 'bg-white text-gray-700 border-indigo-100 hover:border-indigo-300 hover:scale-105 cursor-pointer'
+                    : 'bg-white/80 text-gray-500 border-gray-200'
                 }`}
               >
-                <span className="text-[10px] text-gray-400 font-semibold absolute top-1 left-2">{idx + 1}</span>
+                <span className="text-[10px] text-gray-400 font-semibold absolute top-1 left-1.5">{idx + 1}</span>
                 <span className="mt-2">{val !== null && val !== undefined ? val : ''}</span>
                 {isConfirmed && <Lock className="w-3 h-3 text-emerald-200 absolute bottom-1 right-1" />}
               </div>
@@ -201,27 +241,29 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
           })}
         </div>
 
-        {/* 세로 8칸 (인덱스 12 ~ 19) : ㄱ자의 우측 하단 꼬리 */}
-        <div className="flex flex-col gap-2 w-full items-end pr-[1px] sm:pr-[2px]">
+        {/* 세로 8칸 (12 ~ 19) : ㄱ자의 우측 하단 꼬리 */}
+        <div className="flex flex-col gap-1.5 sm:gap-2 w-full items-end pr-[1px]">
           {Array.from({ length: 8 }).map((_, i) => {
             const idx = 12 + i;
-            const val = myBoard[idx];
-            const isConfirmed = confirmedSlots[idx];
+            const val = boardData[idx];
+            const isConfirmed = confirmedData[idx];
             const isSelected = selectedSlotIndex === idx;
 
             return (
               <div
                 key={idx}
-                onClick={() => !isConfirmed && setSelectedSlotIndex(idx)}
-                className={`w-12 h-14 sm:w-14 sm:h-16 rounded-2xl flex flex-col items-center justify-center font-black text-base sm:text-lg transition-all duration-200 cursor-pointer relative shadow-sm border ${
+                onClick={() => isInteractive && !isConfirmed && setSelectedSlotIndex(idx)}
+                className={`w-11 h-13 sm:w-14 sm:h-16 rounded-2xl flex flex-col items-center justify-center font-black text-sm sm:text-lg transition-all duration-200 relative shadow-sm border ${
                   isConfirmed
                     ? 'bg-gradient-to-b from-emerald-500 to-teal-600 text-white border-emerald-400 shadow-md scale-[0.98]'
                     : isSelected
-                    ? 'bg-amber-100 text-amber-900 border-amber-400 ring-4 ring-amber-300/50 scale-105 z-10'
-                    : 'bg-white text-gray-700 border-indigo-100 hover:border-indigo-300 hover:scale-105'
+                    ? 'bg-amber-100 text-amber-900 border-amber-400 ring-4 ring-amber-300/50 scale-105 z-10 cursor-pointer'
+                    : isInteractive
+                    ? 'bg-white text-gray-700 border-indigo-100 hover:border-indigo-300 hover:scale-105 cursor-pointer'
+                    : 'bg-white/80 text-gray-500 border-gray-200'
                 }`}
               >
-                <span className="text-[10px] text-gray-400 font-semibold absolute top-1 left-2">{idx + 1}</span>
+                <span className="text-[10px] text-gray-400 font-semibold absolute top-1 left-1.5">{idx + 1}</span>
                 <span className="mt-2">{val !== null && val !== undefined ? val : ''}</span>
                 {isConfirmed && <Lock className="w-3 h-3 text-emerald-200 absolute bottom-1 right-1" />}
               </div>
@@ -234,7 +276,7 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
 
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col gap-8 animate-fade-in py-4">
-      {/* 타이틀 헤더 */}
+      {/* ── 상단 헤더 ── */}
       <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 rounded-[2.5rem] p-8 text-white shadow-xl flex flex-col sm:flex-row items-center justify-between gap-6 relative overflow-hidden">
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
         <div className="flex items-center gap-4 z-10">
@@ -244,62 +286,77 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-3 py-0.5 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold border border-white/30">
-                실시간 소통 멀티게임
+                실시간 멀티 대결
               </span>
-              {isAdmin && <span className="px-2.5 py-0.5 bg-amber-400 text-amber-950 rounded-full text-xs font-black">👑 관리자</span>}
+              {isAdmin && <span className="px-2.5 py-0.5 bg-amber-400 text-amber-950 rounded-full text-xs font-black">👑 선생님(관리자)</span>}
             </div>
             <h2 className="text-3xl font-black tracking-tight">스트림스 (STREAMS) 🎯</h2>
             <p className="text-sm text-indigo-100 mt-1 font-medium">
-              선생님이 뽑는 숫자를 20개 ㄱ자 칸에 순서대로 적절히 넣어 최고의 오름차순 스트림을 완성하세요!
+              선생님이 라운드마다 뽑는 숫자를 20개 ㄱ자 칸 중 원하는 위치에 지정하세요!
             </p>
           </div>
         </div>
 
         {currentRoom && (
           <button
-            onClick={() => setCurrentRoom(null)}
+            onClick={() => { setCurrentRoom(null); setSelectedPlayerForView(null); }}
             className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full text-sm font-bold transition-all border border-white/30 shrink-0 z-10"
           >
-            <ArrowLeft className="w-4 h-4" /> 방 나가기
+            <ArrowLeft className="w-4 h-4" /> 대기실 나가기
           </button>
         )}
       </div>
 
       {errorMsg && (
-        <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-2xl text-center text-sm font-bold">
-          ⚠️ {errorMsg}
+        <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-2xl text-center text-sm font-bold animate-fade-in flex items-center justify-center gap-2">
+          <AlertCircle className="w-4 h-4" /> {errorMsg}
         </div>
       )}
 
-      {/* ───── 방 접속 전 (대기실 / 방생성) ───── */}
+      {/* ───── 방 접속 전 (대기실 / 닉네임 입력 / 방생성) ───── */}
       {!currentRoom && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* 학생: 방 입장 */}
+          {/* 학생: 방 코드 & 닉네임 입력 후 입장 */}
           <div className="bg-white rounded-[2.5rem] p-8 shadow-[0_10px_30px_rgba(181,200,255,0.2)] border border-white flex flex-col justify-between gap-6">
             <div>
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl mb-4 font-bold">
-                🔑
+                🎮
               </div>
-              <h3 className="text-2xl font-black text-[#2D3748] mb-2">게임 방 입장하기</h3>
+              <h3 className="text-2xl font-black text-[#2D3748] mb-2">게임 방 참가하기</h3>
               <p className="text-sm text-[#8E9BAE] font-medium mb-6">
-                선생님이 만드신 4자리 방 코드를 입력하여 실시간 게임에 참여해보세요!
+                선생님의 방 코드와 사용할 **닉네임**을 입력하세요. (게임을 시작하면 접속이 제한됩니다)
               </p>
 
               <form onSubmit={handleJoinRoom} className="flex flex-col gap-4">
-                <input
-                  type="text"
-                  maxLength={4}
-                  placeholder="방 코드 4자리 (예: 1234)"
-                  value={roomCodeInput}
-                  onChange={(e) => setRoomCodeInput(e.target.value)}
-                  className="w-full px-5 py-4 text-center text-2xl font-black tracking-widest bg-[#F8FBFE] border border-gray-200 rounded-2xl focus:outline-none focus:border-indigo-400 text-gray-800"
-                />
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">방 코드 (4자리)</label>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    placeholder="예: 1234"
+                    value={roomCodeInput}
+                    onChange={(e) => setRoomCodeInput(e.target.value)}
+                    className="w-full px-5 py-3 text-center text-xl font-black tracking-widest bg-[#F8FBFE] border border-gray-200 rounded-2xl focus:outline-none focus:border-indigo-400 text-gray-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">플레이어 닉네임 (이름)</label>
+                  <input
+                    type="text"
+                    placeholder="닉네임 입력 (예: 수학왕홍길동)"
+                    value={nicknameInput}
+                    onChange={(e) => setNicknameInput(e.target.value)}
+                    className="w-full px-5 py-3 text-center font-bold bg-[#F8FBFE] border border-gray-200 rounded-2xl focus:outline-none focus:border-indigo-400 text-gray-800"
+                  />
+                </div>
+
                 <button
                   type="submit"
                   disabled={loading || !roomCodeInput.trim()}
-                  className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50"
+                  className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black text-lg rounded-full shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50 mt-2"
                 >
-                  {loading ? '입장 중...' : '방 참가하기 🚀'}
+                  {loading ? '입장 검증 중...' : '게임 방 참가하기 🚀'}
                 </button>
               </form>
             </div>
@@ -311,9 +368,9 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
               <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center text-2xl mb-4 font-bold">
                 🏫
               </div>
-              <h3 className="text-2xl font-black text-[#2D3748] mb-2">선생님 전용 방 만들기</h3>
+              <h3 className="text-2xl font-black text-[#2D3748] mb-2">선생님 전용 방 생성</h3>
               <p className="text-sm text-gray-600 font-medium mb-6">
-                학생들과 함께할 새로운 스트림스 멀티플레이 방을 생성하고 숫자를 진행하세요.
+                학생들과 실시간 스트림스 대결을 펼칠 새로운 게임 방을 생성하고 진행하세요.
               </p>
             </div>
 
@@ -338,24 +395,49 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
       {/* ───── 방 접속 후 (게임 진행 화면) ───── */}
       {currentRoom && (
         <div className="flex flex-col gap-8">
-          {/* 방 대기 및 상태 보드 */}
+          {/* 방 상태 상단 바 */}
           <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_10px_30px_rgba(181,200,255,0.2)] border border-white flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center font-black text-2xl shadow-inner">
                 {currentRoom.room_code}
               </div>
               <div>
-                <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">입장코드</p>
-                <h4 className="text-xl font-black text-gray-800">스트림스 게임 대기실</h4>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">입장코드</span>
+                  {currentRoom.status === 'playing' ? (
+                    <span className="px-2.5 py-0.5 bg-red-100 text-red-600 rounded-full text-[11px] font-black flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> 게임 진행 중 (신규 접속 차단)
+                    </span>
+                  ) : currentRoom.status === 'ended' ? (
+                    <span className="px-2.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[11px] font-black">
+                      🏁 게임 종료
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 bg-green-100 text-green-700 rounded-full text-[11px] font-black">
+                      🟢 대기 중 (학생 접속 가능)
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-xl font-black text-gray-800 mt-1">스트림스 멀티 게임 공간</h4>
                 <p className="text-xs text-indigo-600 font-semibold flex items-center gap-1 mt-0.5">
-                  <Users className="w-3.5 h-3.5" /> 현재 접속 플레이어: {players.length}명
+                  <Users className="w-3.5 h-3.5" /> 참여자: {players.length}명
                 </p>
               </div>
             </div>
 
-            {/* 관리자 컨트롤 또는 뽑힌 숫자 디스플레이 */}
-            <div className="flex items-center gap-4">
-              {isAdmin && (
+            {/* 관리자 컨트롤 (숫자 뽑기 & 라운드별 학생 제출 비율 확인) */}
+            {isAdmin && (
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                {/* 현 라운드 제출 진행도 현황 */}
+                {currentRoom.numbers.length > 0 && (
+                  <div className="px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-2xl text-center">
+                    <p className="text-[11px] text-indigo-400 font-bold">라운드 {currentRoom.numbers.length} 배치 완료 현황</p>
+                    <p className="text-sm font-black text-indigo-700">
+                      {currentRoundFilledCount}명 / {players.length}명 완료
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleDrawNumber}
@@ -363,7 +445,7 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
                     className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-black rounded-full shadow-md hover:scale-105 transition-all disabled:opacity-40 text-sm flex items-center gap-2"
                   >
                     <Sparkles className="w-4 h-4" />
-                    숫자/★ 뽑기 ({currentRoom.numbers.length}/20)
+                    다음 숫자/★ 뽑기 ({currentRoom.numbers.length}/20)
                   </button>
                   <button
                     onClick={handleResetGame}
@@ -373,23 +455,25 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
                     <RefreshCw className="w-4 h-4" />
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* 최근 뽑힌 숫자 대형 전광판 */}
+          {/* 선생님 전광판: 이번 라운드 뽑힌 숫자 */}
           <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl flex flex-col items-center justify-center text-center gap-4 relative overflow-hidden border border-slate-800">
             <p className="text-xs text-indigo-300 font-bold tracking-widest uppercase">
-              Current Drawn Number ({currentRoom.numbers.length}/20)
+              Current Round {currentRoom.numbers.length} / 20
             </p>
-            <div className="w-28 h-28 sm:w-32 sm:h-32 bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl flex items-center justify-center text-5xl sm:text-6xl font-black text-slate-950 shadow-[0_0_50px_rgba(251,191,36,0.5)] border-4 border-amber-200 animate-pulse">
-              {lastDrawnNumber !== null && lastDrawnNumber !== undefined ? lastDrawnNumber : '❓'}
+            <div className="w-28 h-28 sm:w-32 sm:h-32 bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl flex items-center justify-center text-5xl sm:text-6xl font-black text-slate-950 shadow-[0_0_50px_rgba(251,191,36,0.5)] border-4 border-amber-200 animate-bounce">
+              {currentDrawnNumber !== null && currentDrawnNumber !== undefined ? currentDrawnNumber : '❓'}
             </div>
-            <p className="text-xs text-slate-400">
-              {lastDrawnNumber ? `선생님이 방금 [ ${lastDrawnNumber} ] (을)를 뽑으셨습니다!` : '선생님이 첫 번째 숫자를 뽑을 때까지 대기하세요.'}
+            <p className="text-xs text-slate-300 font-medium">
+              {currentDrawnNumber !== null && currentDrawnNumber !== undefined
+                ? `선생님이 뽑은 숫자 [ ${currentDrawnNumber} ] (을)를 원하는 빈 칸에 배치하세요!`
+                : '선생님이 첫 번째 숫자를 뽑을 때까지 대기하세요.'}
             </p>
 
-            {/* 지금까지 뽑힌 전체 숫자 롤 */}
+            {/* 지금까지 뽑힌 히스토리 롤 */}
             <div className="w-full flex items-center justify-center gap-2 flex-wrap mt-2 bg-slate-800/60 p-3 rounded-2xl border border-slate-700">
               <span className="text-xs text-slate-400 font-bold mr-1">뽑힌 히스토리:</span>
               {currentRoom.numbers.length === 0 ? (
@@ -398,7 +482,11 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
                 currentRoom.numbers.map((n, idx) => (
                   <span
                     key={idx}
-                    className="w-7 h-7 rounded-lg bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-black flex items-center justify-center"
+                    className={`w-7 h-7 rounded-lg text-xs font-black flex items-center justify-center border ${
+                      idx === currentRoundIndex
+                        ? 'bg-amber-400 text-slate-950 border-amber-300 scale-110 shadow-md'
+                        : 'bg-amber-400/20 text-amber-300 border-amber-400/40'
+                    }`}
                   >
                     {n}
                   </span>
@@ -407,80 +495,110 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
             </div>
           </div>
 
-          {/* ㄱ자 20칸 스트림스 보드 */}
-          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_12px_40px_rgba(199,206,234,0.3)] border border-white flex flex-col items-center gap-4">
-            <div className="flex items-center justify-between w-full border-b pb-4 border-gray-100">
-              <div>
-                <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
-                  <Gamepad2 className="w-5 h-5 text-indigo-500" />
-                  나의 ㄱ자 스트림스 보드 (20칸)
-                </h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  비어있는 칸을 클릭하여 숫자를 적은 뒤 [확인]을 누르면 수정이 불가능합니다.
-                </p>
+          {/* ── 학생 화면: 내 ㄱ자 보드에 숫자 넣기 ── */}
+          {!isAdmin && (
+            <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_12px_40px_rgba(199,206,234,0.3)] border border-white flex flex-col items-center gap-4">
+              <div className="flex items-center justify-between w-full border-b pb-4 border-gray-100">
+                <div>
+                  <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                    <Gamepad2 className="w-5 h-5 text-indigo-500" />
+                    {nicknameInput} 님의 ㄱ자 스트림스 보드
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    원하는 비어있는 칸을 클릭하면 이번 라운드의 숫자 [ {currentDrawnNumber ?? '❓'} ] (이)가 배치됩니다.
+                  </p>
+                </div>
+
+                {selectedSlotIndex !== null && (
+                  <button
+                    onClick={() => handleConfirmPlacement(selectedSlotIndex)}
+                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-full text-sm shadow-md transition-all flex items-center gap-1.5 animate-pulse"
+                  >
+                    <Check className="w-4 h-4" /> {selectedSlotIndex + 1}번 칸에 배치 확정 (수정 불가)
+                  </button>
+                )}
               </div>
 
-              {selectedSlotIndex !== null && (
-                <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-bold animate-bounce">
-                  ✏️ {selectedSlotIndex + 1}번 칸 선택됨
+              {/* ㄱ자 보드 그리드 (인터랙티브 활성화) */}
+              {renderLShapedGrid(myBoard, confirmedSlots, true)}
+
+              {selectedSlotIndex !== null && !confirmedSlots[selectedSlotIndex] && (
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl w-full max-w-md text-center text-xs text-amber-900 font-bold animate-fade-in">
+                  👉 {selectedSlotIndex + 1}번 칸에 숫자 [ {currentDrawnNumber} ] (을)를 넣으시겠습니까? 오른쪽 상단의 [배치 확정]을 클릭해 주세요!
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── 관리자 관전 화면: 특정 학생의 보드 실시간 조회 모달/영역 ── */}
+          {isAdmin && selectedPlayerForView && (
+            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-[2.5rem] p-6 sm:p-8 border-2 border-purple-200 shadow-xl flex flex-col gap-4 animate-fade-in">
+              <div className="flex items-center justify-between border-b pb-3 border-purple-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-600 text-white rounded-xl flex items-center justify-center font-bold">
+                    <Eye className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-purple-950">
+                      [실시간 화면 관전] {selectedPlayerForView.student_name} 학생
+                    </h4>
+                    <p className="text-xs text-purple-600">
+                      현재 진행 점수: <strong>{selectedPlayerForView.score || 0}점</strong> · 입력된 칸: {selectedPlayerForView.board.filter(x => x !== null && x !== undefined).length}/20
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedPlayerForView(null)}
+                  className="px-4 py-1.5 bg-white text-purple-700 hover:bg-purple-100 rounded-full text-xs font-bold transition-colors border border-purple-200"
+                >
+                  관전 닫기 ✕
+                </button>
+              </div>
+
+              {/* 해당 학생의 보드 그리기 */}
+              {renderLShapedGrid(
+                selectedPlayerForView.board,
+                selectedPlayerForView.board.map(v => v !== null && v !== undefined),
+                false
+              )}
+            </div>
+          )}
+
+          {/* ── 실시간 참가자 목록 & 닉네임 관전 클릭 ── */}
+          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_12px_40px_rgba(199,206,234,0.3)] border border-white flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-4 border-gray-100">
+              <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-500" />
+                실시간 참가 플레이어 현황 ({players.length}명)
+              </h3>
+              {isAdmin && (
+                <span className="text-xs text-indigo-500 font-semibold">
+                  💡 학생을 클릭하면 실시간 화면(보드)을 관전할 수 있습니다.
                 </span>
               )}
             </div>
 
-            {/* ㄱ자 그리드 */}
-            {renderLShapedGrid()}
-
-            {/* 숫자 입력 폼 (선택된 칸이 있을 때) */}
-            {selectedSlotIndex !== null && !confirmedSlots[selectedSlotIndex] && (
-              <div className="bg-amber-50 border border-amber-200 p-5 rounded-3xl w-full max-w-md flex flex-col gap-3 items-center shadow-lg animate-fade-in">
-                <p className="text-sm font-bold text-amber-900">
-                  {selectedSlotIndex + 1}번 칸에 적을 숫자를 입력하고 확인을 눌러주세요.
-                </p>
-                <div className="flex gap-2 w-full">
-                  <input
-                    type="text"
-                    placeholder="1~30 숫자 또는 ★"
-                    value={inputVal}
-                    onChange={(e) => setInputVal(e.target.value)}
-                    className="flex-grow px-4 py-3 bg-white border border-amber-300 rounded-2xl text-center font-bold text-lg focus:outline-none focus:border-amber-500"
-                  />
-                  <button
-                    onClick={() => setInputVal('★')}
-                    className="px-4 py-3 bg-amber-200 hover:bg-amber-300 text-amber-900 font-black rounded-2xl text-sm transition-colors"
-                  >
-                    ★ 선택
-                  </button>
-                  <button
-                    onClick={() => handleConfirmSlot(selectedSlotIndex)}
-                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-2xl text-sm transition-colors shadow-md"
-                  >
-                    확인 (수정 불가)
-                  </button>
-                </div>
-                <p className="text-[11px] text-amber-700">⚠️ 한번 확인을 누르면 숫자를 다시 변경할 수 없으니 신중히 결정하세요!</p>
-              </div>
-            )}
-          </div>
-
-          {/* 접속자 리더보드 & 실시간 현황 */}
-          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-[0_12px_40px_rgba(199,206,234,0.3)] border border-white flex flex-col gap-4">
-            <h3 className="text-xl font-black text-gray-800 flex items-center gap-2 border-b pb-4 border-gray-100">
-              <Trophy className="w-5 h-5 text-amber-500" />
-              실시간 학생 점수 및 진행 현황
-            </h3>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {players.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6 col-span-full">아직 다른 학생 접속자가 없습니다.</p>
+                <p className="text-sm text-gray-400 text-center py-6 col-span-full">아직 접속한 학생이 없습니다.</p>
               ) : (
                 players
                   .sort((a, b) => (b.score || 0) - (a.score || 0))
                   .map((p, idx) => {
                     const filledCount = p.board ? p.board.filter((x) => x !== null && x !== undefined).length : 0;
+                    const isRoundFilled = currentRoom.numbers.length > 0 && filledCount >= currentRoom.numbers.length;
+
                     return (
                       <div
                         key={p.student_id}
-                        className="bg-[#F8FBFE] p-4 rounded-2xl border border-gray-100 flex items-center justify-between"
+                        onClick={() => isAdmin && setSelectedPlayerForView(p)}
+                        className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${
+                          isAdmin ? 'cursor-pointer hover:border-purple-300 hover:shadow-md' : ''
+                        } ${
+                          selectedPlayerForView?.student_id === p.student_id
+                            ? 'bg-purple-100 border-purple-400 ring-2 ring-purple-300'
+                            : 'bg-[#F8FBFE] border-gray-100'
+                        }`}
                       >
                         <div className="flex items-center gap-3">
                           <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${
@@ -489,14 +607,30 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
                             {idx + 1}
                           </span>
                           <div>
-                            <p className="font-bold text-sm text-gray-800">{p.student_name}</p>
-                            <p className="text-[11px] text-gray-400">채운 칸: {filledCount}/20</p>
+                            <p className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
+                              {p.student_name}
+                              {isAdmin && <Eye className="w-3.5 h-3.5 text-purple-400" />}
+                            </p>
+                            <p className="text-[11px] text-gray-400">
+                              채운 칸: {filledCount}/20
+                            </p>
                           </div>
                         </div>
 
-                        <div className="text-right">
-                          <span className="text-lg font-black text-indigo-600">{p.score || 0}</span>
-                          <span className="text-xs text-gray-400 ml-0.5">점</span>
+                        <div className="text-right flex flex-col items-end gap-1">
+                          <div>
+                            <span className="text-lg font-black text-indigo-600">{p.score || 0}</span>
+                            <span className="text-xs text-gray-400 ml-0.5">점</span>
+                          </div>
+                          {isRoundFilled ? (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold flex items-center gap-0.5">
+                              <Check className="w-3 h-3" /> 이번 라운드 완료
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold">
+                              배치 대기 중
+                            </span>
+                          )}
                         </div>
                       </div>
                     );

@@ -29,23 +29,22 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
   const [currentRoom, setCurrentRoom] = useState<StreamsRoom | null>(null);
   const [players, setPlayers] = useState<StreamsPlayer[]>([]);
   
-  // 학생 플레이용 보드 상태
   const [myBoard, setMyBoard] = useState<(number | string | null)[]>(Array(20).fill(null));
   const [confirmedSlots, setConfirmedSlots] = useState<boolean[]>(Array(20).fill(false));
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
   const [myScore, setMyScore] = useState<number>(0);
+  const [scoreBreakdown, setScoreBreakdown] = useState<{ len: number; score: number }[]>([]);
 
-  // 실시간 학생 자가 점수 계산 (비어있는 중간 칸도 뛰어넘어 오름차순 수열 유지)
-  useEffect(() => {
-    let scoreAcc = 0;
+
+  // 점수 계산 상세 내역 분석 함수
+  const getBoardScoreBreakdown = (board: (number | string | null)[]) => {
+    const groups: { len: number; score: number }[] = [];
     let currentLen = 0;
     let prevNum: number | null = null;
 
-    for (let i = 0; i < myBoard.length; i++) {
-      const val = myBoard[i];
-      if (val === null || val === undefined) {
-        continue;
-      }
+    for (let i = 0; i < board.length; i++) {
+      const val = board[i];
+      if (val === null || val === undefined) continue;
 
       if (val === '★') {
         currentLen++;
@@ -55,7 +54,9 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
           currentLen++;
           prevNum = num;
         } else {
-          scoreAcc += STREAM_SCORE_TABLE[currentLen] || 0;
+          if (currentLen > 0) {
+            groups.push({ len: currentLen, score: STREAM_SCORE_TABLE[currentLen] || 0 });
+          }
           currentLen = 1;
           prevNum = num;
         }
@@ -63,11 +64,20 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
     }
 
     if (currentLen > 0) {
-      scoreAcc += STREAM_SCORE_TABLE[currentLen] || 0;
+      groups.push({ len: currentLen, score: STREAM_SCORE_TABLE[currentLen] || 0 });
     }
 
-    setMyScore(scoreAcc);
+    const total = groups.reduce((acc, g) => acc + g.score, 0);
+    return { total, groups };
+  };
+
+  // 실시간 학생 자가 점수 계산 및 상세 내역 업데이트
+  useEffect(() => {
+    const { total, groups } = getBoardScoreBreakdown(myBoard);
+    setMyScore(total);
+    setScoreBreakdown(groups);
   }, [myBoard]);
+
 
 
   
@@ -583,6 +593,35 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
               {/* ㄱ자 보드 그리드 (인터랙티브 활성화) */}
               {renderLShapedGrid(myBoard, confirmedSlots, true)}
 
+              {/* 점수 산출 이유 / 세부 묶음 공식 표시 */}
+              <div className="w-full bg-[#F8FBFE] border border-gray-100 rounded-2xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                    🧮 점수 산출 이유 (연속 수열 묶음 세부내역)
+                  </span>
+                  <span className="text-xs font-black text-amber-600">합계: {myScore}점</span>
+                </div>
+                {scoreBreakdown.length === 0 ? (
+                  <p className="text-xs text-gray-400">아직 배치된 수열이 없습니다.</p>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {scoreBreakdown.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="px-3 py-1 bg-white border border-indigo-100 rounded-xl text-xs font-semibold text-gray-700 shadow-sm flex items-center gap-1"
+                      >
+                        <span className="text-indigo-600 font-bold">{item.len}개 묶음</span>
+                        <span className="text-gray-400 font-normal">➔</span>
+                        <span className="text-amber-600 font-black">+{item.score}점</span>
+                      </div>
+                    ))}
+                    <span className="text-xs text-gray-400 font-medium ml-1">
+                      (공식: {scoreBreakdown.map((g) => `${g.score}점`).join(' + ')} = {myScore}점)
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {selectedSlotIndex !== null && !confirmedSlots[selectedSlotIndex] && (
                 <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl w-full max-w-md text-center text-xs text-amber-900 font-bold animate-fade-in">
                   👉 {selectedSlotIndex + 1}번 칸에 숫자 [ {currentDrawnNumber} ] (을)를 넣으시겠습니까? 오른쪽 상단의 [배치 확정]을 클릭해 주세요!
@@ -648,8 +687,40 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
                 selectedPlayerForView.board.map(v => v !== null && v !== undefined),
                 false
               )}
+
+              {/* 해당 학생 점수 산출 공식 상세 내역 */}
+              {(() => {
+                const { total, groups } = getBoardScoreBreakdown(selectedPlayerForView.board);
+                return (
+                  <div className="bg-white/80 border border-purple-200 rounded-2xl p-4 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-purple-900">
+                        🧮 {selectedPlayerForView.student_name} 학생의 점수 산출 내역
+                      </span>
+                      <span className="text-xs font-black text-purple-700">총점: {total}점</span>
+                    </div>
+                    {groups.length === 0 ? (
+                      <p className="text-xs text-gray-400">아직 배치된 수열이 없습니다.</p>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {groups.map((item, idx) => (
+                          <div key={idx} className="px-3 py-1 bg-purple-50 border border-purple-100 rounded-xl text-xs font-semibold text-purple-900 shadow-sm flex items-center gap-1">
+                            <span>{item.len}개 묶음</span>
+                            <span className="text-purple-300">➔</span>
+                            <span className="font-black text-purple-700">+{item.score}점</span>
+                          </div>
+                        ))}
+                        <span className="text-xs text-purple-500 font-medium ml-1">
+                          (공식: {groups.map((g) => `${g.score}점`).join(' + ')} = {total}점)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
+
 
           {/* ── 실시간 참가자 목록 & 닉네임 관전 (선생님/관리자 전용) ── */}
           {isAdmin && (

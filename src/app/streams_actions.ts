@@ -267,13 +267,13 @@ export async function drawNextStreamsNumberAction(roomId: string, currentNumbers
 
     // 1~30 및 ★ 후보 풀 생성
     // 1~10: 1개씩
-    // 11~20: 2개씩
-    // 21~30: 1개씩
+    // 11~19: 2개씩
+    // 20~30: 1개씩
     // ★ : 1개
     const pool: (number | string)[] = [];
     for (let i = 1; i <= 10; i++) pool.push(i);
-    for (let i = 11; i <= 20; i++) { pool.push(i); pool.push(i); }
-    for (let i = 21; i <= 30; i++) pool.push(i);
+    for (let i = 11; i <= 19; i++) { pool.push(i); pool.push(i); }
+    for (let i = 20; i <= 30; i++) pool.push(i);
     pool.push('★');
 
     // 이미 뽑힌 숫자들 제거

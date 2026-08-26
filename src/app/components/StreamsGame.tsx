@@ -715,7 +715,15 @@ export default function StreamsGame({ currentUser, onOpenAuth }: StreamsGameProp
                     <Gamepad2 className="w-5 h-5 text-indigo-500" />
                     {nicknameInput} 님의 ㄱ자 스트림스 보드
                   </h3>
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-100">
+                      1~30 또는 ★
+                    </span>
+                    <span className="px-2.5 py-0.5 bg-purple-50 text-purple-700 font-bold rounded-lg text-xs border border-purple-100">
+                      11~19는 두 번
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
                     원하는 비어있는 칸을 클릭하면 이번 라운드의 숫자 [ {currentDrawnNumber ?? '❓'} ] (이)가 배치됩니다.
                   </p>
                 </div>

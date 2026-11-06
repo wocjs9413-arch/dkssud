@@ -38,6 +38,7 @@ import {
   Gamepad2,
 } from 'lucide-react';
 import StreamsGame from '@/app/components/StreamsGame';
+import AuctionGame from '@/app/components/AuctionGame';
 
 
 // ─── 타입 정의 ───────────────────────────────────────────────
@@ -748,6 +749,7 @@ export default function Home() {
   const [submitError, setSubmitError] = useState('');
   const [isGuest, setIsGuest] = useState(false);
   const [showPlayChoiceModal, setShowPlayChoiceModal] = useState(false);
+  const [activeGameTab, setActiveGameTab] = useState<'streams' | 'auction'>('auction');
 
   // Leaderboard
   const [leaderboard, setLeaderboard] = useState<ScoreRecord[]>([]);
@@ -1474,10 +1476,51 @@ export default function Home() {
 
           {/* ── 게임 탭 (viewMode === 'game') ── */}
           {viewMode === 'game' && (
-            <StreamsGame
-              currentUser={currentUser}
-              onOpenAuth={() => { resetAuthForm(); setShowAuthModal(true); }}
-            />
+            <div className="flex flex-col gap-6 w-full">
+              {/* 게임 선택 스위처 */}
+              <div className="bg-white rounded-3xl p-3 shadow-[0_8px_25px_rgba(181,200,255,0.2)] border border-white flex flex-col sm:flex-row items-center justify-center gap-3 max-w-xl mx-auto w-full">
+                <button
+                  onClick={() => setActiveGameTab('streams')}
+                  className={`flex-1 w-full py-3.5 px-5 rounded-2xl font-black text-sm sm:text-base transition-all flex items-center justify-center gap-2 ${
+                    activeGameTab === 'streams'
+                      ? 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 text-white shadow-lg scale-[1.02]'
+                      : 'bg-[#F8FBFE] text-gray-500 hover:bg-indigo-50 hover:text-indigo-700'
+                  }`}
+                >
+                  <span>🎲</span>
+                  <span>스트림스 (STREAMS)</span>
+                </button>
+                <button
+                  onClick={() => setActiveGameTab('auction')}
+                  className={`flex-1 w-full py-3.5 px-5 rounded-2xl font-black text-sm sm:text-base transition-all flex items-center justify-center gap-2 ${
+                    activeGameTab === 'auction'
+                      ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg scale-[1.02]'
+                      : 'bg-[#F8FBFE] text-gray-500 hover:bg-amber-50 hover:text-amber-700'
+                  }`}
+                >
+                  <span>🪙</span>
+                  <span>숫자 경매 게임</span>
+                </button>
+              </div>
+
+              {activeGameTab === 'streams' ? (
+                <StreamsGame
+                  currentUser={currentUser}
+                  onOpenAuth={() => {
+                    resetAuthForm();
+                    setShowAuthModal(true);
+                  }}
+                />
+              ) : (
+                <AuctionGame
+                  currentUser={currentUser}
+                  onOpenAuth={() => {
+                    resetAuthForm();
+                    setShowAuthModal(true);
+                  }}
+                />
+              )}
+            </div>
           )}
         </div>
       </main>

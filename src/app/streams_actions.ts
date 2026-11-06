@@ -96,6 +96,7 @@ export async function getStreamsRoomAction(roomCode: string): Promise<{ success:
       .from('streams_rooms')
       .select('*')
       .eq('room_code', roomCode.trim())
+      .eq('created_by', '10000')
       .maybeSingle();
 
     if (roomErr || !room) {
@@ -124,6 +125,7 @@ export async function getAllStreamsRoomsAction(creatorId: string): Promise<{ suc
     const { data, error } = await supabase
       .from('streams_rooms')
       .select('*')
+      .eq('created_by', '10000')
       .order('created_at', { ascending: false });
 
     if (error) return { success: false, error: error.message };
